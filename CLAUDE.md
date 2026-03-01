@@ -140,7 +140,7 @@ API_PORT=3001
 ## 8. Módulos do sistema e estado de desenvolvimento
 | Módulo | Descrição | Status |
 |--------|-----------|--------|
-| M0 | Infraestrutura base (monorepo, DB, auth, multi-tenancy) | 🔲 Pendente |
+| M0 | Infraestrutura base (monorepo, DB, auth, multi-tenancy) | ✅ Concluído |
 | M1 | Upload + pipeline de editais (OCR + extração de requisitos) | 🔲 Pendente |
 | M2 | Acervo de CATs (upload PDF/Excel, extração, cat_itens) | 🔲 Pendente |
 | M3 | Motor de cruzamento semântico | 🔲 Pendente |
