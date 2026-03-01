@@ -1,0 +1,33 @@
+{
+  "name": "licitacat",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "db:migrate": "pnpm --filter @licitacat/db migrate",
+    "db:studio": "pnpm --filter @licitacat/db studio",
+    "db:seed": "pnpm --filter @licitacat/db seed",
+    "db:generate": "pnpm --filter @licitacat/db generate",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
