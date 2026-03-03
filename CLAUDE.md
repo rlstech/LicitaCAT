@@ -141,7 +141,7 @@ API_PORT=3001
 | Módulo | Descrição | Status |
 |--------|-----------|--------|
 | M0 | Infraestrutura base (monorepo, DB, auth, multi-tenancy) | ✅ Concluído |
-| M1 | Upload + pipeline de editais (OCR + extração de requisitos) | 🔲 Pendente |
+| M1 | Upload + pipeline de editais (OCR + extração de requisitos) | 🔄 Em andamento |
 | M2 | Acervo de CATs (upload PDF/Excel, extração, cat_itens) | 🔲 Pendente |
 | M3 | Motor de cruzamento semântico | 🔲 Pendente |
 | M4 | Dashboard + exportação de relatórios | 🔲 Pendente |

@@ -9,6 +9,7 @@
     "./processors": "./src/processors/index.ts"
   },
   "scripts": {
+    "worker": "tsx src/worker.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -16,6 +17,7 @@
     "@licitacat/shared": "workspace:*",
     "@licitacat/db": "workspace:*",
     "@licitacat/ai": "workspace:*",
+    "@aws-sdk/client-s3": "^3.500.0",
     "bullmq": "^5.4.0",
     "zod": "^3.22.0"
   },
