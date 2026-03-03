@@ -194,3 +194,77 @@ export function parseCatExtractionXml(xml: string): ParsedCatData {
   }
 }
 
+// ─── Crossing Parsing ─────────────────────────────────────────
+
+export interface ParsedCrossingEvaluation {
+  catId: string
+  catItemId: string | null
+  avaliacaoLlm: 'atende' | 'atende_parcialmente' | 'nao_atende'
+  justificativa: string
+}
+
+export interface ParsedCrossingResult {
+  resultado: 'atendido' | 'atendido_parcialmente' | 'gap'
+  justificativa: string
+}
+
+export interface ParsedRecommendation {
+  decisao: 'participar' | 'participar_com_ressalvas' | 'nao_participar'
+  justificativa: string
+}
+
+const VALID_AVALIACOES = new Set(['atende', 'atende_parcialmente', 'nao_atende'])
+const VALID_RESULTADOS = new Set(['atendido', 'atendido_parcialmente', 'gap'])
+const VALID_DECISOES = new Set(['participar', 'participar_com_ressalvas', 'nao_participar'])
+
+export function parseCrossingEvaluationsXml(xml: string): {
+  avaliacoes: ParsedCrossingEvaluation[]
+  resultadoGeral: ParsedCrossingResult
+} {
+  const avaliacaoBlocks = extractAllBlocks(xml, 'avaliacao')
+  const avaliacoes: ParsedCrossingEvaluation[] = []
+
+  for (const block of avaliacaoBlocks) {
+    const catId = extractTag(block, 'cat_id')
+    if (!catId) continue
+
+    const avaliacaoRaw = extractTag(block, 'avaliacao_llm') ?? 'nao_atende'
+    const avaliacaoLlm = VALID_AVALIACOES.has(avaliacaoRaw)
+      ? (avaliacaoRaw as ParsedCrossingEvaluation['avaliacaoLlm'])
+      : 'nao_atende'
+
+    avaliacoes.push({
+      catId,
+      catItemId: extractTag(block, 'cat_item_id'),
+      avaliacaoLlm,
+      justificativa: extractTag(block, 'justificativa') ?? '',
+    })
+  }
+
+  const resultadoGeralBlock = extractTag(xml, 'resultado_geral') ?? xml
+  const resultadoRaw = extractTag(resultadoGeralBlock, 'resultado') ?? 'gap'
+  const resultado = VALID_RESULTADOS.has(resultadoRaw)
+    ? (resultadoRaw as ParsedCrossingResult['resultado'])
+    : 'gap'
+
+  return {
+    avaliacoes,
+    resultadoGeral: {
+      resultado,
+      justificativa: extractTag(resultadoGeralBlock, 'justificativa') ?? '',
+    },
+  }
+}
+
+export function parseCrossingRecommendationXml(xml: string): ParsedRecommendation {
+  const decisaoRaw = extractTag(xml, 'decisao') ?? 'nao_participar'
+  const decisao = VALID_DECISOES.has(decisaoRaw)
+    ? (decisaoRaw as ParsedRecommendation['decisao'])
+    : 'nao_participar'
+
+  return {
+    decisao,
+    justificativa: extractTag(xml, 'justificativa') ?? '',
+  }
+}
+
