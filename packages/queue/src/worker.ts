@@ -1,6 +1,7 @@
 import {
     createOcrWorker,
     createEditalExtractionWorker,
+    createCatExtractionWorker,
     createEmbeddingGenWorker,
 } from './processors/index.js'
 
@@ -8,9 +9,10 @@ console.log('🚀 Starting LicitaCAT workers...')
 
 const ocrWorker = createOcrWorker()
 const editalExtractionWorker = createEditalExtractionWorker()
+const catExtractionWorker = createCatExtractionWorker()
 const embeddingGenWorker = createEmbeddingGenWorker()
 
-const workers = [ocrWorker, editalExtractionWorker, embeddingGenWorker]
+const workers = [ocrWorker, editalExtractionWorker, catExtractionWorker, embeddingGenWorker]
 
 // Logging
 for (const worker of workers) {

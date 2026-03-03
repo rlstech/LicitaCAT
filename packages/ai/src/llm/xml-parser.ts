@@ -122,3 +122,75 @@ export function parseEditalMetadataXml(xml: string): ParsedEditalMetadata {
     dataAbertura: extractTag(xml, 'data_abertura'),
   }
 }
+
+// ─── CAT Parsing ──────────────────────────────────────────────
+
+export interface ParsedCatItem {
+  numeroItem: number | null
+  descricao: string
+  unidade: string | null
+  quantidade: number | null
+}
+
+export interface ParsedCatData {
+  numeroCat: string | null
+  empresaContratante: string | null
+  tipoObraServico: string | null
+  descricaoTecnica: string | null
+  quantitativoValor: number | null
+  quantitativoUnidade: string | null
+  dataInicio: string | null
+  dataConclusao: string | null
+  aiConfidenceScore: number
+  itens: ParsedCatItem[]
+}
+
+export function parseCatExtractionXml(xml: string): ParsedCatData {
+  const scoreStr = extractTag(xml, 'ai_confidence_score')
+  let aiConfidenceScore = scoreStr ? parseInt(scoreStr, 10) : 50
+  if (isNaN(aiConfidenceScore) || aiConfidenceScore < 0) aiConfidenceScore = 0
+  if (aiConfidenceScore > 100) aiConfidenceScore = 100
+
+  const quantStr = extractTag(xml, 'quantitativo_valor')
+  const quantitativoValor = quantStr
+    ? parseFloat(quantStr.replace(/[^\d.,\-]/g, '').replace(',', '.'))
+    : null
+
+  // Parse items
+  const itemBlocks = extractAllBlocks(xml, 'item')
+  const itens: ParsedCatItem[] = []
+
+  for (const block of itemBlocks) {
+    const descricao = extractTag(block, 'descricao')
+    if (!descricao) continue
+
+    const numStr = extractTag(block, 'numero_item')
+    const numeroItem = numStr ? parseInt(numStr, 10) : null
+
+    const qtdStr = extractTag(block, 'quantidade')
+    const quantidade = qtdStr
+      ? parseFloat(qtdStr.replace(/[^\d.,\-]/g, '').replace(',', '.'))
+      : null
+
+    itens.push({
+      numeroItem: numeroItem && !isNaN(numeroItem) ? numeroItem : null,
+      descricao,
+      unidade: extractTag(block, 'unidade'),
+      quantidade: quantidade && !isNaN(quantidade) ? quantidade : null,
+    })
+  }
+
+  return {
+    numeroCat: extractTag(xml, 'numero_cat'),
+    empresaContratante: extractTag(xml, 'empresa_contratante'),
+    tipoObraServico: extractTag(xml, 'tipo_obra_servico'),
+    descricaoTecnica: extractTag(xml, 'descricao_tecnica'),
+    quantitativoValor: quantitativoValor && !isNaN(quantitativoValor) ? quantitativoValor : null,
+    quantitativoUnidade: extractTag(xml, 'quantitativo_unidade'),
+    dataInicio: extractTag(xml, 'data_inicio'),
+    dataConclusao: extractTag(xml, 'data_conclusao'),
+    aiConfidenceScore,
+    itens,
+  }
+}
+
