@@ -8,6 +8,7 @@ import { editaisRoutes } from './modules/editais/routes.js'
 import { catsRoutes } from './modules/cats/routes.js'
 import { crossingsRoutes } from './modules/crossings/routes.js'
 import { uploadsRoutes } from './modules/uploads/routes.js'
+import { dashboardRoutes } from './modules/dashboard/routes.js'
 
 const PORT = parseInt(process.env['API_PORT'] ?? '3001', 10)
 const HOST = process.env['API_HOST'] ?? '0.0.0.0'
@@ -46,6 +47,7 @@ async function buildServer() {
   await app.register(catsRoutes, { prefix: '/api/cats' })
   await app.register(crossingsRoutes, { prefix: '/api/crossings' })
   await app.register(uploadsRoutes, { prefix: '/api/uploads' })
+  await app.register(dashboardRoutes, { prefix: '/api/dashboard' })
 
   // Global error handler
   app.setErrorHandler((error, _request, reply) => {

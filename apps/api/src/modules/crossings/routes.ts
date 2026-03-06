@@ -3,9 +3,38 @@ import { z } from 'zod'
 import { requireAuth, requireRole } from '../../middleware/auth.js'
 import { NotFoundError, ValidationError } from '@licitacat/shared/errors'
 import { db } from '@licitacat/db'
-import { crossings, crossingItems, processingJobs } from '@licitacat/db/schema'
+import { crossings, crossingItems, editalRequisitos, editais, processingJobs } from '@licitacat/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
 import { crossingQueue } from '@licitacat/queue/queues'
+
+const RESULTADO_LABELS: Record<string, string> = {
+  atendido: 'Atendido',
+  atendido_parcialmente: 'Atendido Parcialmente',
+  gap: 'Gap',
+}
+
+const CATEGORIA_LABELS: Record<string, string> = {
+  qualificacao_tecnica: 'Qualificação Técnica',
+  qualificacao_economica: 'Qualificação Econômica',
+  regularidade_fiscal: 'Regularidade Fiscal',
+  habilitacao_juridica: 'Habilitação Jurídica',
+  outro: 'Outro',
+}
+
+const RECOMENDACAO_LABELS: Record<string, string> = {
+  participar: 'Participar',
+  participar_com_ressalvas: 'Participar com Ressalvas',
+  nao_participar: 'Não Participar',
+}
+
+function escapeCSV(value: string | number | boolean | null | undefined): string {
+  if (value == null) return ''
+  const str = String(value)
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
 
 const CrossingParamsSchema = z.object({ crossingId: z.string().uuid() })
 
@@ -104,6 +133,110 @@ export async function crossingsRoutes(app: FastifyInstance) {
           eq(crossingItems.tenantId, request.tenantId),
         ),
       )
+  })
+
+  // GET /api/crossings/:crossingId/export/csv
+  app.get('/:crossingId/export/csv', async (request, reply) => {
+    const { crossingId } = CrossingParamsSchema.parse(request.params)
+
+    const crossing = await db.query.crossings.findFirst({
+      where: and(
+        eq(crossings.id, crossingId),
+        eq(crossings.tenantId, request.tenantId),
+      ),
+    })
+    if (!crossing) throw new NotFoundError('Crossing', crossingId)
+
+    const edital = crossing.editalId
+      ? await db.query.editais.findFirst({
+          where: and(
+            eq(editais.id, crossing.editalId),
+            eq(editais.tenantId, request.tenantId),
+          ),
+        })
+      : null
+
+    const items = await db
+      .select({
+        resultado: crossingItems.resultado,
+        aiJustificativa: crossingItems.aiJustificativa,
+        scoreSimilaridadeMax: crossingItems.scoreSimilaridadeMax,
+        humanOverride: crossingItems.humanOverride,
+        humanOverrideNote: crossingItems.humanOverrideNote,
+        requisitoDescricao: editalRequisitos.descricao,
+        requisitoCategoria: editalRequisitos.categoria,
+        quantitativoExigido: editalRequisitos.quantitativoExigido,
+        unidade: editalRequisitos.unidade,
+        lote: editalRequisitos.lote,
+      })
+      .from(crossingItems)
+      .innerJoin(editalRequisitos, eq(crossingItems.requisitoId, editalRequisitos.id))
+      .where(
+        and(
+          eq(crossingItems.crossingId, crossingId),
+          eq(crossingItems.tenantId, request.tenantId),
+        ),
+      )
+      .orderBy(editalRequisitos.categoria, editalRequisitos.createdAt)
+
+    const reportDate = new Date().toLocaleDateString('pt-BR')
+    const orgao = edital?.orgaoLicitante ?? ''
+    const numeroEdital = edital?.numeroEdital ?? ''
+    const recomendacao = crossing.recomendacao
+      ? (RECOMENDACAO_LABELS[crossing.recomendacao] ?? crossing.recomendacao)
+      : ''
+
+    const metaRows = [
+      `# Relatório de Cruzamento LicitaCAT`,
+      `# Data:,${reportDate}`,
+      `# Órgão Licitante:,${escapeCSV(orgao)}`,
+      `# Número do Edital:,${escapeCSV(numeroEdital)}`,
+      `# Score de Aderência:,${crossing.scoreAderencia ?? ''}`,
+      `# Recomendação:,${recomendacao}`,
+      `# Requisitos Atendidos:,${crossing.requisitosAtendidos ?? 0}`,
+      `# Requisitos Parciais:,${crossing.requisitosComRessalva ?? 0}`,
+      `# Gaps:,${crossing.requisitosGap ?? 0}`,
+      ``,
+    ]
+
+    const header = [
+      'Lote',
+      'Categoria',
+      'Requisito',
+      'Quantitativo',
+      'Unidade',
+      'Resultado',
+      'Score Similaridade (%)',
+      'Justificativa IA',
+      'Revisão Humana',
+      'Nota de Revisão',
+    ].join(',')
+
+    const dataRows = items.map((item) =>
+      [
+        escapeCSV(item.lote),
+        escapeCSV(item.requisitoCategoria ? (CATEGORIA_LABELS[item.requisitoCategoria] ?? item.requisitoCategoria) : ''),
+        escapeCSV(item.requisitoDescricao),
+        escapeCSV(item.quantitativoExigido),
+        escapeCSV(item.unidade),
+        escapeCSV(RESULTADO_LABELS[item.resultado] ?? item.resultado),
+        escapeCSV(
+          item.scoreSimilaridadeMax
+            ? (parseFloat(item.scoreSimilaridadeMax) * 100).toFixed(1)
+            : '',
+        ),
+        escapeCSV(item.aiJustificativa),
+        item.humanOverride ? 'Sim' : 'Não',
+        escapeCSV(item.humanOverrideNote),
+      ].join(','),
+    )
+
+    const csv = [...metaRows, header, ...dataRows].join('\n')
+    const filename = `cruzamento-${crossingId.slice(0, 8)}-${reportDate.replace(/\//g, '-')}.csv`
+
+    reply.header('Content-Type', 'text/csv; charset=utf-8')
+    reply.header('Content-Disposition', `attachment; filename="${filename}"`)
+    return reply.send('\uFEFF' + csv) // BOM para Excel reconhecer UTF-8
   })
 
   // PATCH /api/crossings/:crossingId/items/:itemId/override
