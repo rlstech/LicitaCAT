@@ -64,79 +64,31 @@ export default function UploadEditalPage() {
 
         try {
             const token = await getToken()
-            const headers = {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            }
+            const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
 
-            // 1. Get presigned URL
-            setStage('presigning')
-            setProgress(10)
-
-            const presignRes = await fetch(`${API_URL}/api/uploads/presign`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    fileName: file.name,
-                    mimeType: file.type,
-                    fileSize: file.size,
-                    entityType: 'edital',
-                }),
-            })
-
-            if (!presignRes.ok) {
-                const err = await presignRes.json().catch(() => ({}))
-                throw new Error((err as { error?: { message?: string } }).error?.message ?? 'Erro ao gerar URL de upload')
-            }
-
-            const { presignedUrl, s3Key, entityId } = await presignRes.json() as {
-                presignedUrl: string
-                s3Key: string
-                entityId: string
-            }
-
-            // 2. Upload to S3
             setStage('uploading')
-            setProgress(30)
+            setProgress(20)
 
-            const uploadRes = await fetch(presignedUrl, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': file.type,
-                },
-                body: file,
-            })
+            const formData = new FormData()
+            formData.append('entityType', 'edital')
+            formData.append('file', file)
 
-            if (!uploadRes.ok) {
-                throw new Error('Falha no upload do arquivo para o storage')
-            }
-
-            setProgress(70)
-
-            // 3. Confirm upload
-            setStage('confirming')
-
-            const confirmRes = await fetch(`${API_URL}/api/uploads/confirm`, {
+            const res = await fetch(`${API_URL}/api/uploads/file`, {
                 method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    entityType: 'edital',
-                    entityId,
-                    s3Key,
-                    fileName: file.name,
-                    mimeType: file.type,
-                }),
+                headers: authHeader,
+                body: formData,
             })
 
-            if (!confirmRes.ok) {
-                const err = await confirmRes.json().catch(() => ({}))
-                throw new Error((err as { error?: { message?: string } }).error?.message ?? 'Erro ao confirmar upload')
+            setProgress(80)
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}))
+                throw new Error((err as { error?: { message?: string } }).error?.message ?? 'Erro no upload')
             }
 
             setProgress(100)
             setStage('done')
 
-            // Redirect after short delay
             setTimeout(() => {
                 router.push('/editais')
             }, 1500)
@@ -150,9 +102,9 @@ export default function UploadEditalPage() {
 
     const stageLabels: Record<UploadStage, string> = {
         idle: '',
-        presigning: 'Preparando upload...',
+        presigning: '',
         uploading: 'Enviando arquivo...',
-        confirming: 'Processando...',
+        confirming: '',
         done: 'Upload concluído! Redirecionando...',
         error: 'Erro no upload',
     }

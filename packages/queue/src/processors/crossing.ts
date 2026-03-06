@@ -11,7 +11,7 @@ import {
     editais,
 } from '@licitacat/db/schema'
 import {
-    anthropic,
+    callLlm,
     DEFAULT_MODEL,
     calculateCostUsd,
 } from '@licitacat/ai/llm'
@@ -176,8 +176,7 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
                     candidates,
                 )
 
-                const response = await anthropic.messages.create({
-                    model: DEFAULT_MODEL,
+                const response = await callLlm({
                     max_tokens: 2048,
                     system: CROSSING_SYSTEM_PROMPT,
                     messages: [{ role: 'user', content: userPrompt }],
@@ -186,8 +185,7 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
                 totalInputTokens += response.usage.input_tokens
                 totalOutputTokens += response.usage.output_tokens
 
-                const responseText = response.content[0]?.type === 'text' ? response.content[0].text : ''
-                const parsed = parseCrossingEvaluationsXml(responseText)
+                const parsed = parseCrossingEvaluationsXml(response.text)
 
                 resultado = parsed.resultadoGeral.resultado
                 justificativa = parsed.resultadoGeral.justificativa
@@ -276,8 +274,7 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
                 gapDescriptions.slice(0, 5),
             )
 
-            const recResponse = await anthropic.messages.create({
-                model: DEFAULT_MODEL,
+            const recResponse = await callLlm({
                 max_tokens: 1024,
                 system: CROSSING_SYSTEM_PROMPT,
                 messages: [{ role: 'user', content: recPrompt }],
@@ -286,8 +283,7 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
             totalInputTokens += recResponse.usage.input_tokens
             totalOutputTokens += recResponse.usage.output_tokens
 
-            const recText = recResponse.content[0]?.type === 'text' ? recResponse.content[0].text : ''
-            const parsedRec = parseCrossingRecommendationXml(recText)
+            const parsedRec = parseCrossingRecommendationXml(recResponse.text)
             recomendacao = parsedRec.decisao
             recomendacaoJustificativa = parsedRec.justificativa
         }
@@ -336,6 +332,6 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
 export function createCrossingWorker(): Worker<CrossingJobData> {
     return new Worker<CrossingJobData>('crossing', processCrossing, {
         connection,
-        concurrency: 1, // Crossings are heavy — one at a time
+        concurrency: 1,
     })
 }

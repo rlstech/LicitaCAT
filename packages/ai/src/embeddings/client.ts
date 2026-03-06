@@ -1,10 +1,16 @@
-const VOYAGE_API_KEY = process.env['VOYAGE_API_KEY']
-const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings'
-const EMBEDDING_MODEL = 'voyage-large-2'
-const EMBEDDING_DIMENSIONS = 1536
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-// Pricing: $0.12 per million tokens
-const COST_PER_MILLION_TOKENS = 0.12
+const apiKey = process.env['GEMINI_API_KEY']
+if (!apiKey) {
+  throw new Error('GEMINI_API_KEY environment variable is required')
+}
+
+const genAI = new GoogleGenerativeAI(apiKey)
+const EMBEDDING_MODEL = 'text-embedding-004'
+const EMBEDDING_DIMENSIONS = 768
+
+// Gemini embedding pricing: ~$0.00 (free tier) or very low cost
+const COST_PER_MILLION_TOKENS = 0.000
 
 export interface EmbeddingResult {
   embedding: number[]
@@ -18,53 +24,24 @@ export interface BatchEmbeddingResult {
   costUsd: number
 }
 
-async function callVoyageApi(
-  input: string | string[],
-  inputType: 'document' | 'query',
-): Promise<{ data: Array<{ embedding: number[] }>; usage: { total_tokens: number } }> {
-  if (!VOYAGE_API_KEY) {
-    throw new Error('VOYAGE_API_KEY environment variable is required')
-  }
-
-  const response = await fetch(VOYAGE_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${VOYAGE_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input,
-      input_type: inputType,
-    }),
-  })
-
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Voyage AI API error: ${response.status} ${error}`)
-  }
-
-  return response.json() as Promise<{
-    data: Array<{ embedding: number[] }>
-    usage: { total_tokens: number }
-  }>
-}
-
 export async function generateEmbedding(
   text: string,
   inputType: 'document' | 'query' = 'document',
 ): Promise<EmbeddingResult> {
-  const result = await callVoyageApi(text, inputType)
-  const embedding = result.data[0]?.embedding
+  const model = genAI.getGenerativeModel({ model: EMBEDDING_MODEL })
+  const taskType = inputType === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT'
 
+  const result = await model.embedContent({
+    content: { parts: [{ text }], role: 'user' },
+    taskType: taskType as Parameters<typeof model.embedContent>[0]['taskType'],
+  })
+
+  const embedding = result.embedding.values
   if (!embedding || embedding.length !== EMBEDDING_DIMENSIONS) {
-    throw new Error(`Invalid embedding dimensions: expected ${EMBEDDING_DIMENSIONS}`)
+    throw new Error(`Invalid embedding dimensions: expected ${EMBEDDING_DIMENSIONS}, got ${embedding?.length}`)
   }
 
-  const tokensUsed = result.usage.total_tokens
-  const costUsd = (tokensUsed / 1_000_000) * COST_PER_MILLION_TOKENS
-
-  return { embedding, tokensUsed, costUsd }
+  return { embedding, tokensUsed: 0, costUsd: 0 }
 }
 
 export async function generateBatchEmbeddings(
@@ -75,24 +52,13 @@ export async function generateBatchEmbeddings(
     return { embeddings: [], tokensUsed: 0, costUsd: 0 }
   }
 
-  // Voyage AI supports up to 128 inputs per request
-  const BATCH_SIZE = 128
-  const allEmbeddings: number[][] = []
-  let totalTokens = 0
-
-  for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-    const batch = texts.slice(i, i + BATCH_SIZE)
-    const result = await callVoyageApi(batch, inputType)
-
-    for (const item of result.data) {
-      allEmbeddings.push(item.embedding)
-    }
-    totalTokens += result.usage.total_tokens
+  const embeddings: number[][] = []
+  for (const text of texts) {
+    const result = await generateEmbedding(text, inputType)
+    embeddings.push(result.embedding)
   }
 
-  const costUsd = (totalTokens / 1_000_000) * COST_PER_MILLION_TOKENS
-
-  return { embeddings: allEmbeddings, tokensUsed: totalTokens, costUsd }
+  return { embeddings, tokensUsed: 0, costUsd: COST_PER_MILLION_TOKENS }
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

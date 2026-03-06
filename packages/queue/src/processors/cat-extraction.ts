@@ -2,9 +2,8 @@ import { Worker, type Job } from 'bullmq'
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 import { db } from '@licitacat/db'
 import { cats, catItens, processingJobs } from '@licitacat/db/schema'
-import { processDocumentOcr } from '@licitacat/ai/ocr'
 import {
-    anthropic,
+    callLlm,
     DEFAULT_MODEL,
     calculateCostUsd,
 } from '@licitacat/ai/llm'
@@ -62,47 +61,35 @@ async function processCatExtraction(
 ): Promise<void> {
     const { tenantId, catId, jobId, fileUrl, fileType } = job.data
 
-    // Mark job as running
     await db
         .update(processingJobs)
         .set({ status: 'running', startedAt: new Date() })
         .where(eq(processingJobs.id, jobId))
 
-    // Update CAT status
     await db
         .update(cats)
         .set({ statusExtracao: 'processing' })
         .where(eq(cats.id, catId))
 
     try {
-        let catText: string
-
-        if (fileType === 'pdf_scanned' || fileType === 'pdf_copyable') {
-            // Download and OCR the PDF
-            const pdfBuffer = await downloadFromS3(fileUrl)
-            const ocrResult = await processDocumentOcr(pdfBuffer, 'application/pdf')
-            catText = ocrResult.text
-        } else {
-            // For Excel/manual, the text should be extracted differently
-            // For now, download and try to extract text
+        if (fileType !== 'pdf_scanned' && fileType !== 'pdf_copyable') {
             throw new Error(`File type ${fileType} extraction not yet implemented`)
         }
 
-        // Call Claude to extract CAT data
-        const userPrompt = buildCatExtractionUserPrompt(catText)
-        const response = await anthropic.messages.create({
-            model: DEFAULT_MODEL,
+        const pdfBuffer = await downloadFromS3(fileUrl)
+        const userPrompt = buildCatExtractionUserPrompt('[O documento PDF está anexado acima. Extraia as informações diretamente do PDF.]')
+        const response = await callLlm({
             max_tokens: 4096,
             system: CAT_EXTRACTION_SYSTEM_PROMPT,
-            messages: [{ role: 'user', content: userPrompt }],
+            messages: [{
+                role: 'user',
+                content: userPrompt,
+                inlineFiles: [{ data: pdfBuffer, mimeType: 'application/pdf' }],
+            }],
         })
 
-        const responseText =
-            response.content[0]?.type === 'text' ? response.content[0].text : ''
+        const parsed = parseCatExtractionXml(response.text)
 
-        const parsed = parseCatExtractionXml(responseText)
-
-        // Update CAT with extracted data
         await db
             .update(cats)
             .set({
@@ -119,7 +106,6 @@ async function processCatExtraction(
             })
             .where(eq(cats.id, catId))
 
-        // Insert cat_itens
         if (parsed.itens.length > 0) {
             const insertedItens = await db
                 .insert(catItens)
@@ -138,7 +124,6 @@ async function processCatExtraction(
                 )
                 .returning()
 
-            // Enqueue embedding generation for each item
             for (const item of insertedItens) {
                 const [embJob] = await db
                     .insert(processingJobs)
@@ -163,7 +148,6 @@ async function processCatExtraction(
             }
         }
 
-        // Enqueue embedding for the CAT description itself
         if (parsed.descricaoTecnica) {
             const [catEmbJob] = await db
                 .insert(processingJobs)
@@ -187,7 +171,6 @@ async function processCatExtraction(
             }
         }
 
-        // Calculate cost
         const totalCost = calculateCostUsd(
             DEFAULT_MODEL,
             response.usage.input_tokens,

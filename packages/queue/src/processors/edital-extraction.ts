@@ -2,7 +2,7 @@ import { Worker, type Job } from 'bullmq'
 import { db } from '@licitacat/db'
 import { editais, editalRequisitos, processingJobs } from '@licitacat/db/schema'
 import {
-    anthropic,
+    callLlm,
     DEFAULT_MODEL,
     calculateCostUsd,
 } from '@licitacat/ai/llm'
@@ -26,7 +26,6 @@ const connection = {
     port: parseInt(new URL(REDIS_URL).port ?? '6379', 10),
 }
 
-// Split text into chunks of roughly N pages (by character count heuristic)
 const CHARS_PER_PAGE = 3000
 const PAGES_PER_CHUNK = 15
 
@@ -61,7 +60,6 @@ async function processEditalExtraction(
 ): Promise<void> {
     const { tenantId, editalId, jobId, ocrText, pageCount } = job.data
 
-    // Mark job as running
     await db
         .update(processingJobs)
         .set({ status: 'running', startedAt: new Date() })
@@ -83,8 +81,7 @@ async function processEditalExtraction(
 
         // 1. Extract metadata from first pages
         const metadataPrompt = buildEditalMetadataPrompt(ocrText)
-        const metadataResponse = await anthropic.messages.create({
-            model: DEFAULT_MODEL,
+        const metadataResponse = await callLlm({
             max_tokens: 1024,
             messages: [{ role: 'user', content: metadataPrompt }],
         })
@@ -92,13 +89,8 @@ async function processEditalExtraction(
         totalInputTokens += metadataResponse.usage.input_tokens
         totalOutputTokens += metadataResponse.usage.output_tokens
 
-        const metadataText =
-            metadataResponse.content[0]?.type === 'text'
-                ? metadataResponse.content[0].text
-                : ''
-        const metadata = parseEditalMetadataXml(metadataText)
+        const metadata = parseEditalMetadataXml(metadataResponse.text)
 
-        // Update edital with metadata
         await db
             .update(editais)
             .set({
@@ -120,8 +112,7 @@ async function processEditalExtraction(
                 chunk.pageRange,
             )
 
-            const response = await anthropic.messages.create({
-                model: DEFAULT_MODEL,
+            const response = await callLlm({
                 max_tokens: 4096,
                 system: EDITAL_EXTRACTION_SYSTEM_PROMPT,
                 messages: [{ role: 'user', content: userPrompt }],
@@ -130,16 +121,11 @@ async function processEditalExtraction(
             totalInputTokens += response.usage.input_tokens
             totalOutputTokens += response.usage.output_tokens
 
-            const responseText =
-                response.content[0]?.type === 'text'
-                    ? response.content[0].text
-                    : ''
-
-            const chunkRequisitos = parseEditalRequisitosXml(responseText)
+            const chunkRequisitos = parseEditalRequisitosXml(response.text)
             allRequisitos.push(...chunkRequisitos)
         }
 
-        // 3. Deduplicate requisitos by description similarity (simple exact-match dedup)
+        // 3. Deduplicate requisitos
         const seen = new Set<string>()
         const uniqueRequisitos = allRequisitos.filter((r) => {
             const key = r.descricao.toLowerCase().trim()
@@ -148,7 +134,7 @@ async function processEditalExtraction(
             return true
         })
 
-        // 4. Insert requisitos into database
+        // 4. Insert requisitos
         if (uniqueRequisitos.length > 0) {
             const insertedRequisitos = await db
                 .insert(editalRequisitos)
@@ -169,7 +155,7 @@ async function processEditalExtraction(
                 )
                 .returning()
 
-            // 5. Enqueue embedding generation for each requisito
+            // 5. Enqueue embedding generation
             for (const requisito of insertedRequisitos) {
                 const [embJob] = await db
                     .insert(processingJobs)
@@ -194,7 +180,7 @@ async function processEditalExtraction(
             }
         }
 
-        // 6. Calculate total cost and update
+        // 6. Calculate cost and update
         const totalCost = calculateCostUsd(
             DEFAULT_MODEL,
             totalInputTokens,

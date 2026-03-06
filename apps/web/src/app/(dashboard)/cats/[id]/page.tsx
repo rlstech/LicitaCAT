@@ -44,7 +44,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 }
 
 export default function CatDetailPage() {
-    const { getToken } = useAuth()
+    const { getToken, isLoaded } = useAuth()
     const params = useParams()
     const catId = params.id as string
 
@@ -68,12 +68,13 @@ export default function CatDetailPage() {
     }, [getToken, catId])
 
     useEffect(() => {
+        if (!isLoaded) return
         fetchData()
         const interval = setInterval(() => {
-            if (cat && cat.statusExtracao === 'processing') fetchData()
+            if (!cat || cat.statusExtracao === 'processing') fetchData()
         }, 5000)
         return () => clearInterval(interval)
-    }, [fetchData, cat?.statusExtracao])
+    }, [fetchData, isLoaded, cat?.statusExtracao])
 
     async function deleteItem(itemId: string) {
         const token = await getToken()

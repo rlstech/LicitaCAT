@@ -1,0 +1,169 @@
+version: '3.9'
+
+services:
+
+  # ── Next.js Frontend ──────────────────────────────────────────
+  web:
+    image: licitacat-web:latest
+    networks:
+      - network_public
+      - licitacat_network
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: "https://api.licitacat.railton.eu.org"
+      CLERK_SECRET_KEY: "sk_test_oroo4ftEGEr1va5g6p7nVWF38VHA4qD6ma1sDHiRjt"
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_YnVzeS10b21jYXQtODMuY2xlcmsuYWNjb3VudHMuZGV2JA"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.licitacat-web.rule=Host(`licitacat.railton.eu.org`)"
+        - "traefik.http.routers.licitacat-web.entrypoints=websecure"
+        - "traefik.http.routers.licitacat-web.tls=true"
+        - "traefik.http.routers.licitacat-web.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.licitacat-web.loadbalancer.server.port=3000"
+
+  # ── Fastify API ────────────────────────────────────────────────
+  api:
+    image: licitacat-api:latest
+    networks:
+      - network_public
+      - licitacat_network
+    environment:
+      NODE_ENV: production
+      API_PORT: "3001"
+      NEXT_PUBLIC_API_URL: "https://licitacat.railton.eu.org"
+      DATABASE_URL: "postgresql://licitacat:licitacat@postgres:5432/licitacat"
+      REDIS_URL: "redis://redis:6379"
+      S3_BUCKET: "licitacat"
+      S3_REGION: "us-east-1"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_PUBLIC_ENDPOINT: "https://storage.licitacat.railton.eu.org"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
+      CLERK_SECRET_KEY: "sk_test_oroo4ftEGEr1va5g6p7nVWF38VHA4qD6ma1sDHiRjt"
+      CLERK_PUBLISHABLE_KEY: "pk_test_YnVzeS10b21jYXQtODMuY2xlcmsuYWNjb3VudHMuZGV2JA"
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_YnVzeS10b21jYXQtODMuY2xlcmsuYWNjb3VudHMuZGV2JA"
+      GEMINI_API_KEY: "***REMOVED-GEMINI-KEY***"
+      VOYAGE_API_KEY: ""
+      GOOGLE_DOCUMENT_AI_PROJECT_ID: ""
+      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: ""
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.licitacat-api.rule=Host(`api.licitacat.railton.eu.org`)"
+        - "traefik.http.routers.licitacat-api.entrypoints=websecure"
+        - "traefik.http.routers.licitacat-api.tls=true"
+        - "traefik.http.routers.licitacat-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.licitacat-api.loadbalancer.server.port=3001"
+
+  # ── BullMQ Worker ──────────────────────────────────────────────
+  worker:
+    image: licitacat-api:latest
+    command: ["./node_modules/.bin/tsx", "packages/queue/src/worker.ts"]
+    networks:
+      - licitacat_network
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://licitacat:licitacat@postgres:5432/licitacat"
+      REDIS_URL: "redis://redis:6379"
+      S3_BUCKET: "licitacat"
+      S3_REGION: "us-east-1"
+      S3_ENDPOINT: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
+      CLERK_SECRET_KEY: "sk_test_oroo4ftEGEr1va5g6p7nVWF38VHA4qD6ma1sDHiRjt"
+      CLERK_PUBLISHABLE_KEY: "pk_test_YnVzeS10b21jYXQtODMuY2xlcmsuYWNjb3VudHMuZGV2JA"
+      GEMINI_API_KEY: "***REMOVED-GEMINI-KEY***"
+      VOYAGE_API_KEY: ""
+      GOOGLE_DOCUMENT_AI_PROJECT_ID: ""
+      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: ""
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+
+  # ── PostgreSQL + pgvector ──────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    networks:
+      - licitacat_network
+    environment:
+      POSTGRES_USER: licitacat
+      POSTGRES_PASSWORD: licitacat
+      POSTGRES_DB: licitacat
+    volumes:
+      - licitacat_postgres_data:/var/lib/postgresql/data
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.role == manager
+
+  # ── Redis ──────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    networks:
+      - licitacat_network
+    volumes:
+      - licitacat_redis_data:/data
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  # ── MinIO (S3 local) ───────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    networks:
+      - licitacat_network
+      - network_public
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - licitacat_minio_data:/data
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.routers.licitacat-minio.rule=Host(`minio.licitacat.railton.eu.org`)"
+        - "traefik.http.routers.licitacat-minio.entrypoints=websecure"
+        - "traefik.http.routers.licitacat-minio.tls=true"
+        - "traefik.http.routers.licitacat-minio.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.licitacat-minio.loadbalancer.server.port=9001"
+        - "traefik.http.routers.licitacat-storage.rule=Host(`storage.licitacat.railton.eu.org`)"
+        - "traefik.http.routers.licitacat-storage.entrypoints=websecure"
+        - "traefik.http.routers.licitacat-storage.tls=true"
+        - "traefik.http.routers.licitacat-storage.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.licitacat-storage.loadbalancer.server.port=9000"
+        - "traefik.http.routers.licitacat-storage.service=licitacat-storage"
+
+networks:
+  network_public:
+    external: true
+  licitacat_network:
+    driver: overlay
+    attachable: true
+
+volumes:
+  licitacat_postgres_data:
+  licitacat_redis_data:
+  licitacat_minio_data:

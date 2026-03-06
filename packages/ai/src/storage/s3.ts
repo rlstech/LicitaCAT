@@ -7,14 +7,16 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 const BUCKET = process.env['S3_BUCKET']
 const REGION = process.env['S3_REGION'] ?? 'us-east-1'
-const ENDPOINT = process.env['S3_ENDPOINT'] // for MinIO
+const ENDPOINT = process.env['S3_ENDPOINT'] // internal (e.g. http://minio:9000)
+const PUBLIC_ENDPOINT = process.env['S3_PUBLIC_ENDPOINT'] // public (e.g. https://storage.example.com)
 
 const PRESIGNED_URL_EXPIRES_SECONDS = 15 * 60 // 15 minutes
 
-function getS3Client(): S3Client {
+function getS3Client(publicFacing = false): S3Client {
+  const endpoint = publicFacing ? (PUBLIC_ENDPOINT ?? ENDPOINT) : ENDPOINT
   return new S3Client({
     region: REGION,
-    ...(ENDPOINT ? { endpoint: ENDPOINT, forcePathStyle: true } : {}),
+    ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
   })
 }
 
@@ -56,7 +58,7 @@ export async function uploadToS3(
 }
 
 export async function generatePresignedDownloadUrl(key: string): Promise<string> {
-  const client = getS3Client()
+  const client = getS3Client(true)
   const bucket = getBucket()
 
   const command = new GetObjectCommand({
@@ -74,7 +76,7 @@ export async function generatePresignedUploadUrl(
   contentType: string,
   maxSizeBytes: number,
 ): Promise<string> {
-  const client = getS3Client()
+  const client = getS3Client(true)
   const bucket = getBucket()
 
   const command = new PutObjectCommand({

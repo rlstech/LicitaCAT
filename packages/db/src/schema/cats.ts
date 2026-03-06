@@ -9,7 +9,7 @@ import {
   pgEnum,
   index,
 } from 'drizzle-orm/pg-core'
-import { sql } from 'drizzle-orm'
+import { sql, relations } from 'drizzle-orm'
 import { tenants, users } from './tenants.js'
 
 export const conselhoEnum = pgEnum('conselho', ['CREA', 'CAU'])
@@ -82,6 +82,13 @@ export const cats = pgTable('cats', {
 }, (table) => ({
   tenantIdx: index('cats_tenant_idx').on(table.tenantId),
   tenantTipoIdx: index('cats_tenant_tipo_idx').on(table.tenantId, table.tipoObraServico),
+}))
+
+export const catsRelations = relations(cats, ({ one }) => ({
+  profissional: one(profissionaisTecnicos, {
+    fields: [cats.profissionalId],
+    references: [profissionaisTecnicos.id],
+  }),
 }))
 
 export const catItens = pgTable('cat_itens', {

@@ -65,36 +65,27 @@ export default function UploadCatPage() {
 
         try {
             const token = await getToken()
-            const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-
-            setStage('presigning')
-            setProgress(10)
-
-            const presignRes = await fetch(`${API_URL}/api/uploads/presign`, {
-                method: 'POST', headers,
-                body: JSON.stringify({ fileName: file.name, mimeType: file.type, fileSize: file.size, entityType: 'cat' }),
-            })
-            if (!presignRes.ok) {
-                const err = await presignRes.json().catch(() => ({}))
-                throw new Error((err as { error?: { message?: string } }).error?.message ?? 'Erro ao gerar URL')
-            }
-            const { presignedUrl, s3Key, entityId } = await presignRes.json() as { presignedUrl: string; s3Key: string; entityId: string }
+            const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
 
             setStage('uploading')
-            setProgress(30)
+            setProgress(20)
 
-            const uploadRes = await fetch(presignedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
-            if (!uploadRes.ok) throw new Error('Falha no upload')
-            setProgress(70)
+            const formData = new FormData()
+            formData.append('entityType', 'cat')
+            formData.append('profissionalId', selectedProfissional)
+            formData.append('file', file)
 
-            setStage('confirming')
-            const confirmRes = await fetch(`${API_URL}/api/uploads/confirm`, {
-                method: 'POST', headers,
-                body: JSON.stringify({ entityType: 'cat', entityId, s3Key, fileName: file.name, mimeType: file.type, profissionalId: selectedProfissional }),
+            const res = await fetch(`${API_URL}/api/uploads/file`, {
+                method: 'POST',
+                headers: authHeader,
+                body: formData,
             })
-            if (!confirmRes.ok) {
-                const err = await confirmRes.json().catch(() => ({}))
-                throw new Error((err as { error?: { message?: string } }).error?.message ?? 'Erro ao confirmar')
+
+            setProgress(80)
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}))
+                throw new Error((err as { error?: { message?: string } }).error?.message ?? 'Erro no upload')
             }
 
             setProgress(100)
@@ -107,7 +98,7 @@ export default function UploadCatPage() {
     }
 
     const stageLabels: Record<UploadStage, string> = {
-        idle: '', presigning: 'Preparando...', uploading: 'Enviando...', confirming: 'Processando...', done: 'Concluído! Redirecionando...', error: 'Erro',
+        idle: '', presigning: '', uploading: 'Enviando...', confirming: '', done: 'Concluído! Redirecionando...', error: 'Erro',
     }
 
     return (

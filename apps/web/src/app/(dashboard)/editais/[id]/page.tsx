@@ -67,7 +67,7 @@ const MODALIDADE_LABELS: Record<string, string> = {
 }
 
 export default function EditalDetailPage() {
-    const { getToken } = useAuth()
+    const { getToken, isLoaded } = useAuth()
     const params = useParams()
     const router = useRouter()
     const editalId = params.id as string
@@ -104,16 +104,17 @@ export default function EditalDetailPage() {
     }, [getToken, editalId])
 
     useEffect(() => {
+        if (!isLoaded) return
         fetchData()
 
         // Poll if still processing
         const interval = setInterval(() => {
-            if (edital && ['ocr_processing', 'extracting'].includes(edital.status)) {
+            if (!edital || ['ocr_processing', 'extracting'].includes(edital.status)) {
                 fetchData()
             }
         }, 5000)
         return () => clearInterval(interval)
-    }, [fetchData, edital?.status])
+    }, [fetchData, isLoaded, edital?.status])
 
     async function updateRequisitoStatus(requisitoId: string, newStatus: string) {
         setUpdatingId(requisitoId)

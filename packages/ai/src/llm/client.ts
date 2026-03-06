@@ -1,18 +1,18 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const apiKey = process.env['ANTHROPIC_API_KEY']
+const apiKey = process.env['GEMINI_API_KEY']
 
 if (!apiKey) {
-  throw new Error('ANTHROPIC_API_KEY environment variable is required')
+  throw new Error('GEMINI_API_KEY environment variable is required')
 }
 
-export const anthropic = new Anthropic({ apiKey })
+const genAI = new GoogleGenerativeAI(apiKey)
 
-export const DEFAULT_MODEL = 'claude-sonnet-4-6' as const
+export const DEFAULT_MODEL = 'gemini-2.0-flash' as const
 
-// Pricing per million tokens (USD) — update as pricing changes
+// Pricing per million tokens (USD)
 const PRICING = {
-  'claude-sonnet-4-6': { input: 3.0, output: 15.0 },
+  'gemini-2.0-flash': { input: 0.075, output: 0.30 },
 } as const
 
 export function calculateCostUsd(
@@ -30,4 +30,54 @@ export interface LlmUsage {
   inputTokens: number
   outputTokens: number
   costUsd: number
+}
+
+export interface LlmResponse {
+  text: string
+  usage: {
+    input_tokens: number
+    output_tokens: number
+  }
+}
+
+export interface LlmInlineFile {
+  data: Buffer
+  mimeType: string
+}
+
+export async function callLlm(options: {
+  model?: string
+  max_tokens?: number
+  system?: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string; inlineFiles?: LlmInlineFile[] }>
+}): Promise<LlmResponse> {
+  const modelName = options.model ?? DEFAULT_MODEL
+
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    ...(options.system ? { systemInstruction: options.system } : {}),
+  })
+
+  const result = await model.generateContent({
+    contents: options.messages.map((m) => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [
+        ...(m.inlineFiles ?? []).map((f) => ({
+          inlineData: { data: f.data.toString('base64'), mimeType: f.mimeType },
+        })),
+        { text: m.content },
+      ],
+    })),
+    generationConfig: {
+      maxOutputTokens: options.max_tokens ?? 4096,
+    },
+  })
+
+  return {
+    text: result.response.text(),
+    usage: {
+      input_tokens: result.response.usageMetadata?.promptTokenCount ?? 0,
+      output_tokens: result.response.usageMetadata?.candidatesTokenCount ?? 0,
+    },
+  }
 }
