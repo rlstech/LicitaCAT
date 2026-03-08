@@ -33,6 +33,8 @@ services:
     networks:
       - network_public
       - licitacat_network
+    secrets:
+      - gcp_credentials
     environment:
       NODE_ENV: production
       API_PORT: "3001"
@@ -50,8 +52,9 @@ services:
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_YnVzeS10b21jYXQtODMuY2xlcmsuYWNjb3VudHMuZGV2JA"
       GEMINI_API_KEY: "***REMOVED-GEMINI-KEY***"
       VOYAGE_API_KEY: ""
-      GOOGLE_DOCUMENT_AI_PROJECT_ID: ""
-      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: ""
+      GOOGLE_DOCUMENT_AI_PROJECT_ID: "engcheck"
+      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: "6547814ce6130bd6"
+      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/gcp_credentials"
     deploy:
       replicas: 1
       restart_policy:
@@ -72,6 +75,8 @@ services:
     command: ["./node_modules/.bin/tsx", "packages/queue/src/worker.ts"]
     networks:
       - licitacat_network
+    secrets:
+      - gcp_credentials
     environment:
       NODE_ENV: production
       DATABASE_URL: "postgresql://licitacat:licitacat@postgres:5432/licitacat"
@@ -85,8 +90,9 @@ services:
       CLERK_PUBLISHABLE_KEY: "pk_test_YnVzeS10b21jYXQtODMuY2xlcmsuYWNjb3VudHMuZGV2JA"
       GEMINI_API_KEY: "***REMOVED-GEMINI-KEY***"
       VOYAGE_API_KEY: ""
-      GOOGLE_DOCUMENT_AI_PROJECT_ID: ""
-      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: ""
+      GOOGLE_DOCUMENT_AI_PROJECT_ID: "engcheck"
+      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: "6547814ce6130bd6"
+      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/gcp_credentials"
     deploy:
       replicas: 1
       restart_policy:
@@ -167,3 +173,7 @@ volumes:
   licitacat_postgres_data:
   licitacat_redis_data:
   licitacat_minio_data:
+
+secrets:
+  gcp_credentials:
+    external: true

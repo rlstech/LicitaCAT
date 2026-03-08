@@ -10,6 +10,7 @@ import {
     parseCatExtractionXml,
     parseCatItemsOnlyXml,
 } from '@licitacat/ai/llm'
+import { processDocumentFormParser } from '@licitacat/ai/ocr'
 import {
     CAT_EXTRACTION_SYSTEM_PROMPT,
     buildCatExtractionUserPrompt,
@@ -24,7 +25,8 @@ const S3_BUCKET = process.env['S3_BUCKET'] ?? ''
 const S3_REGION = process.env['S3_REGION'] ?? 'us-east-1'
 const S3_ENDPOINT = process.env['S3_ENDPOINT']
 
-const CHUNK_SIZE = 6
+// Form Parser online limit is 15 pages
+const CHUNK_SIZE = 15
 
 const connection = {
     host: new URL(REDIS_URL).hostname,
@@ -88,6 +90,31 @@ async function extractPdfPageRange(
     return Buffer.from(bytes)
 }
 
+const FORM_PARSER_CONFIGURED =
+    !!process.env['GOOGLE_DOCUMENT_AI_PROJECT_ID'] &&
+    !!process.env['GOOGLE_DOCUMENT_AI_PROCESSOR_ID']
+
+/**
+ * Extracts text from a PDF chunk.
+ * Uses Form Parser (Document AI) when configured — preserves tables and form fields.
+ * Falls back to sending the raw PDF inline to the LLM when not configured.
+ */
+async function extractChunkText(
+    chunkBuffer: Buffer,
+    pageRange: string,
+    totalPages: number,
+): Promise<{ text: string; docAiCostUsd: number }> {
+    if (FORM_PARSER_CONFIGURED) {
+        const result = await processDocumentFormParser(chunkBuffer, 'application/pdf')
+        return { text: result.formattedText, docAiCostUsd: result.costUsd }
+    }
+    // Fallback: return a placeholder so the LLM receives the PDF inline
+    return {
+        text: `[PDF anexado — páginas ${pageRange} de ${totalPages}]`,
+        docAiCostUsd: 0,
+    }
+}
+
 async function processCatExtraction(
     job: Job<CatExtractionJobData>,
 ): Promise<void> {
@@ -116,6 +143,7 @@ async function processCatExtraction(
         const allItems: ReturnType<typeof parseCatItemsOnlyXml> = []
         let totalInputTokens = 0
         let totalOutputTokens = 0
+        let totalDocAiCostUsd = 0
 
         for (let i = 0; i < numChunks; i++) {
             const startPage = i * CHUNK_SIZE
@@ -123,34 +151,60 @@ async function processCatExtraction(
             const chunkBuffer = await extractPdfPageRange(pdfBuffer, startPage, endPage)
             const pageRange = `${startPage + 1}-${endPage + 1}`
 
+            const { text: chunkText, docAiCostUsd } = await extractChunkText(
+                chunkBuffer,
+                pageRange,
+                totalPages,
+            )
+            totalDocAiCostUsd += docAiCostUsd
+
             if (i === 0) {
-                const userPrompt = buildCatExtractionUserPrompt(
-                    `[PDF anexado — páginas ${pageRange} de ${totalPages}]`,
-                )
-                const response = await callLlm({
-                    max_tokens: 8192,
-                    system: CAT_EXTRACTION_SYSTEM_PROMPT,
-                    messages: [{
-                        role: 'user',
-                        content: userPrompt,
-                        inlineFiles: [{ data: chunkBuffer, mimeType: 'application/pdf' }],
-                    }],
-                })
+                const userPrompt = buildCatExtractionUserPrompt(chunkText)
+
+                const llmPayload = FORM_PARSER_CONFIGURED
+                    ? {
+                          max_tokens: 8192,
+                          system: CAT_EXTRACTION_SYSTEM_PROMPT,
+                          messages: [{ role: 'user' as const, content: userPrompt }],
+                      }
+                    : {
+                          max_tokens: 8192,
+                          system: CAT_EXTRACTION_SYSTEM_PROMPT,
+                          messages: [{
+                              role: 'user' as const,
+                              content: userPrompt,
+                              inlineFiles: [{ data: chunkBuffer, mimeType: 'application/pdf' as const }],
+                          }],
+                      }
+
+                const response = await callLlm(llmPayload)
                 parsedMeta = parseCatExtractionXml(response.text)
                 allItems.push(...parsedMeta.itens)
                 totalInputTokens += response.usage.input_tokens
                 totalOutputTokens += response.usage.output_tokens
             } else {
                 const userPrompt = buildCatItemsOnlyUserPrompt(pageRange)
-                const response = await callLlm({
-                    max_tokens: 8192,
-                    system: CAT_EXTRACTION_SYSTEM_PROMPT,
-                    messages: [{
-                        role: 'user',
-                        content: userPrompt,
-                        inlineFiles: [{ data: chunkBuffer, mimeType: 'application/pdf' }],
-                    }],
-                })
+                const fullPrompt = FORM_PARSER_CONFIGURED
+                    ? `${userPrompt}\n\nTexto extraído:\n${chunkText}`
+                    : userPrompt
+
+                const llmPayload = FORM_PARSER_CONFIGURED
+                    ? {
+                          max_tokens: 8192,
+                          system: CAT_EXTRACTION_SYSTEM_PROMPT,
+                          messages: [{ role: 'user' as const, content: fullPrompt }],
+                      }
+                    : {
+                          max_tokens: 8192,
+                          system: CAT_EXTRACTION_SYSTEM_PROMPT,
+                          messages: [{
+                              role: 'user' as const,
+                              content: userPrompt,
+                              inlineFiles: [{ data: chunkBuffer, mimeType: 'application/pdf' as const }],
+                          }],
+                      }
+
+                const response = await callLlm(llmPayload)
                 const chunkItems = parseCatItemsOnlyXml(response.text)
                 allItems.push(...chunkItems)
                 totalInputTokens += response.usage.input_tokens
@@ -162,7 +216,6 @@ async function processCatExtraction(
             throw new Error('Failed to extract CAT metadata from first chunk')
         }
 
-        // Extra safety filter: only items with positive quantity (parsers already filter, but be sure)
         const filteredItems = allItems.filter(
             item => item.quantidade !== null && !isNaN(item.quantidade) && item.quantidade > 0,
         )
@@ -248,11 +301,8 @@ async function processCatExtraction(
             }
         }
 
-        const totalCost = calculateCostUsd(
-            DEFAULT_MODEL,
-            totalInputTokens,
-            totalOutputTokens,
-        )
+        const llmCostUsd = calculateCostUsd(DEFAULT_MODEL, totalInputTokens, totalOutputTokens)
+        const totalCost = llmCostUsd + totalDocAiCostUsd
 
         await db
             .update(processingJobs)

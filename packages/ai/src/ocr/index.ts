@@ -1,2 +1,2 @@
-export { processDocumentOcr } from './document-ai.js'
-export type { OcrResult } from './document-ai.js'
+export { processDocumentOcr, processDocumentFormParser } from './document-ai.js'
+export type { OcrResult, FormParserResult } from './document-ai.js'
