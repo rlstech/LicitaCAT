@@ -19,6 +19,7 @@
     "@licitacat/ai": "workspace:*",
     "@aws-sdk/client-s3": "^3.500.0",
     "bullmq": "^5.4.0",
+    "pdf-lib": "^1.17.1",
     "zod": "^3.22.0"
   },
   "devDependencies": {

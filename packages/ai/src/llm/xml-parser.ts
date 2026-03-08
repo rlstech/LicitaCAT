@@ -172,11 +172,15 @@ export function parseCatExtractionXml(xml: string): ParsedCatData {
       ? parseFloat(qtdStr.replace(/[^\d.,\-]/g, '').replace(',', '.'))
       : null
 
+    const qtdFinal = quantidade && !isNaN(quantidade) && quantidade > 0 ? quantidade : null
+    // Skip items with no valid positive quantity
+    if (qtdFinal === null) continue
+
     itens.push({
       numeroItem: numeroItem && !isNaN(numeroItem) ? numeroItem : null,
       descricao,
       unidade: extractTag(block, 'unidade'),
-      quantidade: quantidade && !isNaN(quantidade) ? quantidade : null,
+      quantidade: qtdFinal,
     })
   }
 
@@ -192,6 +196,36 @@ export function parseCatExtractionXml(xml: string): ParsedCatData {
     aiConfidenceScore,
     itens,
   }
+}
+
+export function parseCatItemsOnlyXml(xml: string): ParsedCatItem[] {
+  const itemBlocks = extractAllBlocks(xml, 'item')
+  const itens: ParsedCatItem[] = []
+
+  for (const block of itemBlocks) {
+    const descricao = extractTag(block, 'descricao')
+    if (!descricao) continue
+
+    const numStr = extractTag(block, 'numero_item')
+    const numeroItem = numStr ? parseInt(numStr, 10) : null
+
+    const qtdStr = extractTag(block, 'quantidade')
+    const quantidade = qtdStr
+      ? parseFloat(qtdStr.replace(/[^\d.,\-]/g, '').replace(',', '.'))
+      : null
+
+    const qtdFinal = quantidade && !isNaN(quantidade) && quantidade > 0 ? quantidade : null
+    if (qtdFinal === null) continue
+
+    itens.push({
+      numeroItem: numeroItem && !isNaN(numeroItem) ? numeroItem : null,
+      descricao,
+      unidade: extractTag(block, 'unidade'),
+      quantidade: qtdFinal,
+    })
+  }
+
+  return itens
 }
 
 // ─── Crossing Parsing ─────────────────────────────────────────

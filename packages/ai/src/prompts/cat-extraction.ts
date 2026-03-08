@@ -7,7 +7,8 @@ As CATs registram a experiência técnica de profissionais (engenheiros, arquite
 - Quantitativos relevantes
 - Itens individuais de serviços quando listados
 
-Seja preciso com os quantitativos — eles são essenciais para o cruzamento com requisitos de editais.`
+Seja preciso com os quantitativos — eles são essenciais para o cruzamento com requisitos de editais.
+IMPORTANTE: NÃO inclua itens com quantidade zero, nula ou sem quantidade definida.`
 
 export function buildCatExtractionUserPrompt(catText: string): string {
   return `Extraia as informações desta Certidão de Acervo Técnico (CAT):
@@ -32,8 +33,26 @@ Responda no formato:
       <numero_item>número ou null</numero_item>
       <descricao>descrição do item de serviço</descricao>
       <unidade>unidade ou null</unidade>
-      <quantidade>valor numérico ou null</quantidade>
+      <quantidade>valor numérico maior que zero (NÃO incluir itens com quantidade zero ou nula)</quantidade>
     </item>
   </itens>
 </cat>`
+}
+
+export function buildCatItemsOnlyUserPrompt(pageRange: string): string {
+  return `Extraia APENAS os itens de serviço desta seção da CAT (páginas ${pageRange}).
+NÃO inclua itens com quantidade zero, nula ou sem quantidade definida.
+NÃO repita itens já extraídos de páginas anteriores.
+
+Responda no formato:
+<itens>
+  <item>
+    <numero_item>número ou null</numero_item>
+    <descricao>descrição do item de serviço</descricao>
+    <unidade>unidade ou null</unidade>
+    <quantidade>valor numérico maior que zero</quantidade>
+  </item>
+</itens>
+
+Se não houver itens com quantidade válida nesta seção, responda com <itens></itens>.`
 }
