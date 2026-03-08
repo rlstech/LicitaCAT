@@ -1,5 +1,5 @@
 import { db } from '@licitacat/db'
-import { cats, catItens, profissionaisTecnicos } from '@licitacat/db/schema'
+import { cats, catItens, profissionaisTecnicos, crossingItemCats, processingJobs } from '@licitacat/db/schema'
 import { eq, and, desc, count } from 'drizzle-orm'
 import type {
   CreateProfissionalInput,
@@ -92,6 +92,23 @@ export async function updateCat(
     .where(and(eq(cats.id, catId), eq(cats.tenantId, tenantId)))
     .returning()
   return updated
+}
+
+export async function deleteCat(tenantId: string, catId: string) {
+  // 1. Remove referências em crossing_item_cats (sem cascade no FK)
+  await db.delete(crossingItemCats).where(eq(crossingItemCats.catId, catId))
+
+  // 2. Remove jobs de processamento da CAT
+  await db
+    .delete(processingJobs)
+    .where(
+      and(eq(processingJobs.tenantId, tenantId), eq(processingJobs.entityId, catId)),
+    )
+
+  // 3. Remove a CAT (cat_itens cascadeiam automaticamente)
+  await db
+    .delete(cats)
+    .where(and(eq(cats.id, catId), eq(cats.tenantId, tenantId)))
 }
 
 export async function listCatItens(tenantId: string, catId: string) {

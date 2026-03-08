@@ -38,6 +38,8 @@ export default function CatsPage() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const fetchCats = useCallback(async () => {
     try {
@@ -59,8 +61,60 @@ export default function CatsPage() {
     return () => clearInterval(interval)
   }, [fetchCats])
 
+  async function handleDelete(catId: string) {
+    setDeletingId(catId)
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API_URL}/api/cats/${catId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      })
+      if (res.ok || res.status === 204) {
+        setCats((prev) => prev.filter((c) => c.id !== catId))
+        setTotal((t) => t - 1)
+      }
+    } catch { /* silent */ } finally {
+      setDeletingId(null)
+      setConfirmDeleteId(null)
+    }
+  }
+
+  const confirmCat = cats.find((c) => c.id === confirmDeleteId)
+
   return (
     <div>
+      {/* Modal de confirmação */}
+      {confirmDeleteId && confirmCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Excluir CAT</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Tem certeza que deseja excluir a CAT <span className="font-medium">{confirmCat.numeroCat ?? confirmCat.fileName}</span>?
+              Esta ação é irreversível e removerá todos os itens associados.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                disabled={deletingId === confirmDeleteId}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDeleteId)}
+                disabled={deletingId === confirmDeleteId}
+                className="inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingId === confirmDeleteId && (
+                  <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                )}
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">CATs — Acervo Técnico</h1>
@@ -129,7 +183,20 @@ export default function CatsPage() {
                       {new Date(cat.createdAt).toLocaleDateString('pt-BR')}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-right text-sm">
-                      <Link href={`/cats/${cat.id}`} className="font-medium text-brand-600 hover:text-brand-700">Ver detalhes</Link>
+                      <div className="flex items-center justify-end gap-3">
+                        <Link href={`/cats/${cat.id}`} className="font-medium text-brand-600 hover:text-brand-700">
+                          Ver detalhes
+                        </Link>
+                        <button
+                          onClick={() => setConfirmDeleteId(cat.id)}
+                          className="text-red-600 hover:text-red-800"
+                          title="Excluir CAT"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )

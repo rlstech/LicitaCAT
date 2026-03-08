@@ -19,6 +19,7 @@ import {
   listCats,
   findCatById,
   updateCat,
+  deleteCat,
   listCatItens,
   createCatItem,
   updateCatItem,
@@ -84,6 +85,18 @@ export async function catsRoutes(app: FastifyInstance) {
       const existing = await findCatById(request.tenantId, catId)
       if (!existing) throw new NotFoundError('CAT', catId)
       return updateCat(request.tenantId, catId, body.data)
+    },
+  )
+
+  app.delete(
+    '/:catId',
+    { preHandler: requireRole('admin', 'analyst') },
+    async (request, reply) => {
+      const { catId } = CatParamsSchema.parse(request.params)
+      const existing = await findCatById(request.tenantId, catId)
+      if (!existing) throw new NotFoundError('CAT', catId)
+      await deleteCat(request.tenantId, catId)
+      return reply.status(204).send()
     },
   )
 
