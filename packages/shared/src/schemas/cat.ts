@@ -26,6 +26,7 @@ export const UpdateCatSchema = z.object({
   dataInicio: z.coerce.date().optional(),
   dataConclusao: z.coerce.date().optional(),
   ativo: z.boolean().optional(),
+  statusExtracao: z.enum(['pending', 'processing', 'review_pending', 'completed', 'error']).optional(),
 })
 
 export const CreateCatItemSchema = z.object({

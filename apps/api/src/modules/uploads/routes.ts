@@ -5,7 +5,7 @@ import { uploadToS3, buildS3Key } from '@licitacat/ai/storage'
 import { db } from '@licitacat/db'
 import { editais, cats, tenants, processingJobs } from '@licitacat/db/schema'
 import { eq, count, and, gte } from 'drizzle-orm'
-import { ocrQueue, catExtractionQueue } from '@licitacat/queue/queues'
+import { editalExtractionQueue, catExtractionQueue } from '@licitacat/queue/queues'
 import { randomUUID } from 'node:crypto'
 
 const ALLOWED_MIME_TYPES = [
@@ -22,6 +22,14 @@ export async function uploadsRoutes(app: FastifyInstance) {
   app.post('/file', async (request, reply) => {
     const data = await request.file()
     if (!data) throw new ValidationError('No file provided')
+
+    // Consume the file stream FIRST to prevent ECONNRESET when validation fails
+    // (Node.js closes the TCP connection if the request body is not consumed)
+    const chunks: Buffer[] = []
+    for await (const chunk of data.file) {
+      chunks.push(chunk as Buffer)
+    }
+    const buffer = Buffer.concat(chunks)
 
     const entityType = data.fields['entityType'] as { value: string } | undefined
     const profissionalId = data.fields['profissionalId'] as { value: string } | undefined
@@ -58,13 +66,6 @@ export async function uploadsRoutes(app: FastifyInstance) {
       throw new ValidationError('profissionalId é obrigatório para upload de CAT')
     }
 
-    // Read file buffer and upload to MinIO internally
-    const chunks: Buffer[] = []
-    for await (const chunk of data.file) {
-      chunks.push(chunk as Buffer)
-    }
-    const buffer = Buffer.concat(chunks)
-
     const entityId = randomUUID()
     const s3Key = buildS3Key(request.tenantId, type, entityId, data.filename)
     const fileUrl = await uploadToS3(s3Key, buffer, mimeType)
@@ -88,7 +89,7 @@ export async function uploadsRoutes(app: FastifyInstance) {
         .insert(processingJobs)
         .values({
           tenantId: request.tenantId,
-          jobType: 'ocr',
+          jobType: 'edital_extraction',
           entityType: 'edital',
           entityId: edital.id,
           status: 'queued',
@@ -97,7 +98,7 @@ export async function uploadsRoutes(app: FastifyInstance) {
 
       if (!job) throw new Error('Failed to create job')
 
-      await ocrQueue.add('ocr', {
+      await editalExtractionQueue.add('edital_extraction', {
         tenantId: request.tenantId,
         editalId: edital.id,
         jobId: job.id,
@@ -143,9 +144,47 @@ export async function uploadsRoutes(app: FastifyInstance) {
         jobId: job.id,
         fileUrl,
         fileType,
-      })
+      }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } })
 
       return reply.status(201).send({ catId: cat.id, jobId: job.id })
     }
+  })
+
+  // POST /api/uploads/reprocess/:editalId — re-enqueue OCR for an edital in error/uploaded state
+  app.post('/reprocess/:editalId', async (request, reply) => {
+    const { editalId } = (request.params as { editalId: string })
+
+    const edital = await db.query.editais.findFirst({
+      where: and(eq(editais.id, editalId), eq(editais.tenantId, request.tenantId)),
+    })
+
+    if (!edital) throw new ValidationError('Edital não encontrado')
+    if (!['error', 'uploaded'].includes(edital.status)) {
+      throw new ValidationError(`Edital com status "${edital.status}" não pode ser reprocessado`)
+    }
+
+    await db.update(editais).set({ status: 'uploaded' }).where(eq(editais.id, editalId))
+
+    const [job] = await db
+      .insert(processingJobs)
+      .values({
+        tenantId: request.tenantId,
+        jobType: 'edital_extraction',
+        entityType: 'edital',
+        entityId: editalId,
+        status: 'queued',
+      })
+      .returning()
+
+    if (!job) throw new Error('Failed to create job')
+
+    await editalExtractionQueue.add('edital_extraction', {
+      tenantId: request.tenantId,
+      editalId,
+      jobId: job.id,
+      fileUrl: edital.fileUrl,
+    })
+
+    return reply.status(202).send({ editalId, jobId: job.id, status: 'queued' })
   })
 }

@@ -4,20 +4,19 @@ import { NotFoundError, ValidationError } from '@licitacat/shared/errors'
 import {
   ListEditaisQuerySchema,
   EditalParamsSchema,
-  RequisitoParamsSchema,
   UpdateEditalSchema,
-  UpdateRequisitoSchema,
 } from './schema.js'
 import {
   listEditais,
   findEditalById,
   updateEdital,
-  listRequisitos,
-  updateRequisito,
+  deleteEdital,
+  findEditalHabilitacao,
 } from './repository.js'
-import { ocrQueue } from '@licitacat/queue/queues'
+import { editalExtractionQueue } from '@licitacat/queue/queues'
 import { db } from '@licitacat/db'
-import { processingJobs } from '@licitacat/db/schema'
+import { editais, processingJobs } from '@licitacat/db/schema'
+import { eq, and } from 'drizzle-orm'
 
 export async function editaisRoutes(app: FastifyInstance) {
   // All routes require authentication
@@ -53,41 +52,66 @@ export async function editaisRoutes(app: FastifyInstance) {
     },
   )
 
-  // GET /api/editais/:editalId/requisitos
-  app.get('/:editalId/requisitos', async (request) => {
-    const { editalId } = EditalParamsSchema.parse(request.params)
-    const edital = await findEditalById(request.tenantId, editalId)
-    if (!edital) throw new NotFoundError('Edital', editalId)
-    return listRequisitos(request.tenantId, editalId)
-  })
+  // DELETE /api/editais/:editalId
+  app.delete(
+    '/:editalId',
+    { preHandler: requireRole('admin') },
+    async (request, reply) => {
+      const { editalId } = EditalParamsSchema.parse(request.params)
+      const edital = await findEditalById(request.tenantId, editalId)
+      if (!edital) throw new NotFoundError('Edital', editalId)
 
-  // PATCH /api/editais/:editalId/requisitos/:requisitoId
-  app.patch(
-    '/:editalId/requisitos/:requisitoId',
-    { preHandler: requireRole('admin', 'analyst') },
-    async (request) => {
-      const { editalId, requisitoId } = RequisitoParamsSchema.parse(request.params)
-      const body = UpdateRequisitoSchema.safeParse(request.body)
-      if (!body.success) throw new ValidationError('Invalid body', body.error.flatten())
-
-      return updateRequisito(request.tenantId, requisitoId, body.data, request.userId)
+      await deleteEdital(request.tenantId, editalId)
+      return reply.status(204).send()
     },
   )
 
-  // POST /api/editais/:editalId/reprocess-ocr
+  // GET /api/editais/:editalId/habilitacao — structured habilitação data
+  app.get('/:editalId/habilitacao', async (request) => {
+    const { editalId } = EditalParamsSchema.parse(request.params)
+    const edital = await findEditalById(request.tenantId, editalId)
+    if (!edital) throw new NotFoundError('Edital', editalId)
+    return findEditalHabilitacao(request.tenantId, editalId)
+  })
+
+  // POST /api/editais/:editalId/approve — set status to ready
   app.post(
-    '/:editalId/reprocess-ocr',
+    '/:editalId/approve',
+    { preHandler: requireRole('admin', 'analyst') },
+    async (request) => {
+      const { editalId } = EditalParamsSchema.parse(request.params)
+      const edital = await findEditalById(request.tenantId, editalId)
+      if (!edital) throw new NotFoundError('Edital', editalId)
+
+      const [updated] = await db
+        .update(editais)
+        .set({ status: 'ready', updatedAt: new Date() })
+        .where(and(eq(editais.id, editalId), eq(editais.tenantId, request.tenantId)))
+        .returning()
+
+      return updated
+    },
+  )
+
+  // POST /api/editais/:editalId/reprocess — re-enqueue edital extraction
+  app.post(
+    '/:editalId/reprocess',
     { preHandler: requireRole('admin') },
     async (request) => {
       const { editalId } = EditalParamsSchema.parse(request.params)
       const edital = await findEditalById(request.tenantId, editalId)
       if (!edital) throw new NotFoundError('Edital', editalId)
 
+      await db
+        .update(editais)
+        .set({ status: 'uploaded' })
+        .where(eq(editais.id, editalId))
+
       const [job] = await db
         .insert(processingJobs)
         .values({
           tenantId: request.tenantId,
-          jobType: 'ocr',
+          jobType: 'edital_extraction',
           entityType: 'edital',
           entityId: editalId,
           status: 'queued',
@@ -96,7 +120,7 @@ export async function editaisRoutes(app: FastifyInstance) {
 
       if (!job) throw new Error('Failed to create job')
 
-      await ocrQueue.add('ocr', {
+      await editalExtractionQueue.add('edital_extraction', {
         tenantId: request.tenantId,
         editalId,
         jobId: job.id,

@@ -1,11 +1,49 @@
 import { Worker, type Job } from 'bullmq'
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
+import { PDFDocument } from 'pdf-lib'
 import { db } from '@licitacat/db'
 import { editais, processingJobs } from '@licitacat/db/schema'
 import { processDocumentOcr } from '@licitacat/ai/ocr'
 import { eq } from 'drizzle-orm'
-import type { OcrJobData } from '../queues/index.js'
+import { createRequire } from 'module'
 import { editalExtractionQueue } from '../queues/index.js'
+
+// OcrJobData kept here as this processor is retained for historical reference
+interface OcrJobData {
+  tenantId: string
+  editalId: string
+  jobId: string
+  fileUrl: string
+}
+
+// Document AI limit: 15 pages in non-imageless mode, but scanned PDFs can exceed 20MB payload.
+// Using 6 pages per chunk to stay safely under the payload limit for high-res scanned PDFs.
+const OCR_CHUNK_SIZE = 6
+
+// Minimum average characters per page to consider a PDF as copyable (has native text).
+const MIN_CHARS_PER_PAGE_COPYABLE = 100
+
+// Try to extract text directly from a copyable PDF without using Document AI.
+// Returns null if the PDF doesn't have enough native text (scanned).
+async function tryDirectTextExtraction(
+    pdfBuffer: Buffer,
+    totalPages: number,
+): Promise<{ text: string; pdfType: 'copyable' } | null> {
+    try {
+        // pdf-parse is a CJS module — use createRequire for ESM compatibility
+        const require = createRequire(import.meta.url)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string; numpages: number }>
+        const result = await pdfParse(pdfBuffer)
+        const avgCharsPerPage = totalPages > 0 ? result.text.length / totalPages : 0
+        if (avgCharsPerPage >= MIN_CHARS_PER_PAGE_COPYABLE) {
+            return { text: result.text, pdfType: 'copyable' }
+        }
+    } catch {
+        // pdf-parse failed — fall through to Document AI
+    }
+    return null
+}
 
 const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379'
 const S3_BUCKET = process.env['S3_BUCKET'] ?? ''
@@ -68,16 +106,57 @@ async function processOcr(job: Job<OcrJobData>): Promise<void> {
         // Download PDF from S3
         const pdfBuffer = await downloadFromS3(fileUrl)
 
-        // Run OCR via Google Document AI
-        const ocrResult = await processDocumentOcr(pdfBuffer, 'application/pdf')
+        // Determine total pages for chunking
+        const srcDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true })
+        const totalPages = srcDoc.getPageCount()
+
+        let fullText = ''
+        let totalCostUsd = 0
+        let finalPdfType: 'copyable' | 'scanned' | 'mixed' = 'copyable'
+
+        // Try direct text extraction first (fast, free, no Document AI needed)
+        const directResult = await tryDirectTextExtraction(pdfBuffer, totalPages)
+        if (directResult) {
+            fullText = directResult.text
+            finalPdfType = directResult.pdfType
+        } else {
+            // PDF is scanned — use Document AI OCR in chunks
+            let hasScanned = false
+            let hasCopyable = false
+            const numChunks = Math.ceil(totalPages / OCR_CHUNK_SIZE)
+
+            for (let i = 0; i < numChunks; i++) {
+                const startPage = i * OCR_CHUNK_SIZE
+                const endPage = Math.min(startPage + OCR_CHUNK_SIZE - 1, totalPages - 1)
+
+                const chunkDoc = await PDFDocument.create()
+                const indices = Array.from({ length: endPage - startPage + 1 }, (_, k) => startPage + k)
+                const copiedPages = await chunkDoc.copyPages(srcDoc, indices)
+                for (const page of copiedPages) chunkDoc.addPage(page)
+                const chunkBytes = await chunkDoc.save()
+                const chunkBuffer = Buffer.from(chunkBytes)
+
+                const chunkResult = await processDocumentOcr(chunkBuffer, 'application/pdf')
+                fullText += (fullText ? '\n' : '') + chunkResult.text
+                totalCostUsd += chunkResult.costUsd
+
+                if (chunkResult.pdfType === 'scanned') hasScanned = true
+                else if (chunkResult.pdfType === 'copyable') hasCopyable = true
+                else { hasScanned = true; hasCopyable = true }
+            }
+
+            if (hasScanned && hasCopyable) finalPdfType = 'mixed'
+            else if (hasScanned) finalPdfType = 'scanned'
+            else finalPdfType = 'copyable'
+        }
 
         // Update edital with OCR results
         await db
             .update(editais)
             .set({
-                pageCount: ocrResult.pageCount,
-                pdfType: ocrResult.pdfType,
-                ocrCostUsd: ocrResult.costUsd.toFixed(6),
+                pageCount: totalPages,
+                pdfType: finalPdfType,
+                ocrCostUsd: totalCostUsd.toFixed(6),
                 status: 'extracting',
             })
             .where(eq(editais.id, editalId))
@@ -101,8 +180,7 @@ async function processOcr(job: Job<OcrJobData>): Promise<void> {
             tenantId,
             editalId,
             jobId: extractionJob.id,
-            ocrText: ocrResult.text,
-            pageCount: ocrResult.pageCount,
+            fileUrl,
         })
 
         // Mark OCR job as completed
@@ -111,7 +189,7 @@ async function processOcr(job: Job<OcrJobData>): Promise<void> {
             .set({
                 status: 'completed',
                 completedAt: new Date(),
-                costUsd: ocrResult.costUsd.toFixed(6),
+                costUsd: totalCostUsd.toFixed(6),
             })
             .where(eq(processingJobs.id, jobId))
     } catch (error) {

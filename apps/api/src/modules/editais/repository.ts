@@ -1,7 +1,20 @@
 import { db } from '@licitacat/db'
-import { editais, editalRequisitos } from '@licitacat/db/schema'
+import {
+  editais,
+  reqHabilitacaoJuridica,
+  reqRegularidadeFiscal,
+  reqQualificacaoTecnica,
+  reqProfissionais,
+  reqParcelasRelevancia,
+  reqAtestadosProfissionais,
+  reqQualificacaoFinanceira,
+  reqDeclaracoes,
+  reqDeclaracoesEspeciais,
+  reqAlertas,
+  reqAnexosReferenciados,
+} from '@licitacat/db/schema'
 import { eq, and, desc, count } from 'drizzle-orm'
-import type { UpdateEditalInput, UpdateRequisitoInput } from '@licitacat/shared/schemas'
+import type { UpdateEditalInput } from '@licitacat/shared/schemas'
 
 export async function listEditais(
   tenantId: string,
@@ -44,42 +57,87 @@ export async function updateEdital(
   editalId: string,
   data: UpdateEditalInput,
 ) {
+  const { valorEstimado, ...rest } = data
   const [updated] = await db
     .update(editais)
-    .set({ ...data, updatedAt: new Date() })
+    .set({
+      ...rest,
+      ...(valorEstimado !== undefined ? { valorEstimado: valorEstimado.toFixed(2) } : {}),
+      updatedAt: new Date(),
+    })
     .where(and(eq(editais.id, editalId), eq(editais.tenantId, tenantId)))
     .returning()
   return updated
 }
 
-export async function listRequisitos(tenantId: string, editalId: string) {
-  return db
-    .select()
-    .from(editalRequisitos)
-    .where(
-      and(
-        eq(editalRequisitos.tenantId, tenantId),
-        eq(editalRequisitos.editalId, editalId),
-      ),
-    )
-    .orderBy(editalRequisitos.categoria, editalRequisitos.createdAt)
+export async function deleteEdital(tenantId: string, editalId: string) {
+  const [deleted] = await db
+    .delete(editais)
+    .where(and(eq(editais.id, editalId), eq(editais.tenantId, tenantId)))
+    .returning()
+  return deleted
 }
 
-export async function updateRequisito(
-  tenantId: string,
-  requisitoId: string,
-  data: UpdateRequisitoInput,
-  editedBy: string,
-) {
-  const [updated] = await db
-    .update(editalRequisitos)
-    .set({ ...data, editedBy, updatedAt: new Date() })
-    .where(
-      and(
-        eq(editalRequisitos.id, requisitoId),
-        eq(editalRequisitos.tenantId, tenantId),
-      ),
-    )
-    .returning()
-  return updated
+export async function findEditalHabilitacao(tenantId: string, editalId: string) {
+  const [
+    habilitacaoJuridica,
+    regularidadeFiscal,
+    qualificacaoTecnica,
+    profissionais,
+    parcelasRelevancia,
+    atestadosProfissionais,
+    qualificacaoFinanceira,
+    declaracoes,
+    declaracoesEspeciais,
+    alertas,
+    anexosReferenciados,
+  ] = await Promise.all([
+    db.select().from(reqHabilitacaoJuridica).where(
+      and(eq(reqHabilitacaoJuridica.tenantId, tenantId), eq(reqHabilitacaoJuridica.editalId, editalId)),
+    ),
+    db.select().from(reqRegularidadeFiscal).where(
+      and(eq(reqRegularidadeFiscal.tenantId, tenantId), eq(reqRegularidadeFiscal.editalId, editalId)),
+    ),
+    db.query.reqQualificacaoTecnica.findFirst({
+      where: and(eq(reqQualificacaoTecnica.tenantId, tenantId), eq(reqQualificacaoTecnica.editalId, editalId)),
+    }),
+    db.select().from(reqProfissionais).where(
+      and(eq(reqProfissionais.tenantId, tenantId), eq(reqProfissionais.editalId, editalId)),
+    ),
+    db.select().from(reqParcelasRelevancia).where(
+      and(eq(reqParcelasRelevancia.tenantId, tenantId), eq(reqParcelasRelevancia.editalId, editalId)),
+    ),
+    db.select().from(reqAtestadosProfissionais).where(
+      and(eq(reqAtestadosProfissionais.tenantId, tenantId), eq(reqAtestadosProfissionais.editalId, editalId)),
+    ),
+    db.query.reqQualificacaoFinanceira.findFirst({
+      where: and(eq(reqQualificacaoFinanceira.tenantId, tenantId), eq(reqQualificacaoFinanceira.editalId, editalId)),
+    }),
+    db.select().from(reqDeclaracoes).where(
+      and(eq(reqDeclaracoes.tenantId, tenantId), eq(reqDeclaracoes.editalId, editalId)),
+    ),
+    db.select().from(reqDeclaracoesEspeciais).where(
+      and(eq(reqDeclaracoesEspeciais.tenantId, tenantId), eq(reqDeclaracoesEspeciais.editalId, editalId)),
+    ),
+    db.select().from(reqAlertas).where(
+      and(eq(reqAlertas.tenantId, tenantId), eq(reqAlertas.editalId, editalId)),
+    ).orderBy(reqAlertas.nivel),
+    db.select().from(reqAnexosReferenciados).where(
+      and(eq(reqAnexosReferenciados.tenantId, tenantId), eq(reqAnexosReferenciados.editalId, editalId)),
+    ),
+  ])
+
+  return {
+    habilitacaoJuridica,
+    regularidadeFiscal,
+    qualificacaoTecnica: qualificacaoTecnica ?? null,
+    profissionais,
+    parcelasRelevancia,
+    atestadosProfissionais,
+    qualificacaoFinanceira: qualificacaoFinanceira ?? null,
+    declaracoes,
+    declaracoesEspeciais,
+    alertas,
+    anexosReferenciados,
+  }
 }

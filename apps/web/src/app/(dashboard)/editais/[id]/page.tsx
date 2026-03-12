@@ -11,46 +11,62 @@ interface Edital {
     id: string
     fileName: string
     orgaoLicitante: string | null
+    uasg: string | null
     numeroEdital: string | null
     modalidade: string | null
     objeto: string | null
     valorEstimado: string | null
     dataAbertura: string | null
     status: string
-    pageCount: number | null
-    pdfType: string | null
+    regimeExecucao: string | null
+    leiRegente: string | null
+    admiteConsorcio: boolean | null
+    prazoExecucaoMeses: number | null
     aiExtractionCostUsd: string | null
-    ocrCostUsd: string | null
     createdAt: string
 }
 
-interface Requisito {
-    id: string
-    lote: string | null
-    categoria: string
-    descricao: string
-    trechoOriginal: string | null
-    paginaReferencia: number | null
-    quantitativoExigido: string | null
-    unidade: string | null
-    aiConfidenceScore: number
-    status: string
+interface Habilitacao {
+    habilitacaoJuridica: Array<{ id: string; documento: string; aplicaA: string | null; observacao: string | null }>
+    regularidadeFiscal: Array<{ id: string; documento: string; sigla: string | null; validadeDias: number | null; observacao: string | null }>
+    qualificacaoTecnica: {
+        registroConselho: string | null
+        exigeVisitaTecnica: boolean
+        visitaTipo: string | null
+        exigeEscritorioLocal: boolean
+        escritorioDescricao: string | null
+    } | null
+    profissionais: Array<{ id: string; cargo: string; conselho: string | null; quantidade: number | null; cbo: string | null; observacao: string | null }>
+    parcelasRelevancia: Array<{ id: string; servico: string; unidade: string | null; quantidadeMinima: string | null; observacao: string | null }>
+    atestadosProfissionais: Array<{ id: string; profissional: string; caracteristicasExigidas: string | null; exigeCat: boolean; observacao: string | null }>
+    qualificacaoFinanceira: {
+        exigeBalanco: boolean
+        balancoExercicios: number | null
+        patrimonioLiquidoMinimo: string | null
+        lcMinimo: string | null
+        lgMinimo: string | null
+        sgMinimo: string | null
+        exigeCertidaoFalencia: boolean
+        certidaoFalenciaPrazoDias: number | null
+        exigeCapitalSocialMinimo: boolean
+        capitalSocialMinimo: string | null
+        exigeGarantiaProposta: boolean
+        garantiaPropostaPercentual: string | null
+        observacao: string | null
+    } | null
+    declaracoes: Array<{ id: string; descricao: string; baseLegal: string | null; leiEstadual: boolean; penalidadeOmissao: string | null }>
+    declaracoesEspeciais: Array<{ id: string; descricao: string; lei: string | null; uf: string | null }>
+    alertas: Array<{ id: string; nivel: string; categoria: string | null; descricao: string }>
+    anexosReferenciados: Array<{ id: string; identificacao: string; descricao: string | null }>
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
     uploaded: { label: 'Enviado', color: 'bg-gray-100 text-gray-700' },
-    ocr_processing: { label: 'OCR em andamento', color: 'bg-yellow-100 text-yellow-800' },
-    extracting: { label: 'Extraindo requisitos', color: 'bg-blue-100 text-blue-800' },
+    ocr_processing: { label: 'Processando', color: 'bg-yellow-100 text-yellow-800' },
+    extracting: { label: 'Extraindo dados', color: 'bg-blue-100 text-blue-800' },
     review_pending: { label: 'Aguardando revisão', color: 'bg-orange-100 text-orange-800' },
     ready: { label: 'Pronto', color: 'bg-green-100 text-green-700' },
     error: { label: 'Erro', color: 'bg-red-100 text-red-700' },
-}
-
-const REQUISITO_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-    ai_extracted: { label: 'Extraído pela IA', color: 'bg-purple-100 text-purple-700' },
-    human_approved: { label: 'Aprovado', color: 'bg-green-100 text-green-700' },
-    human_edited: { label: 'Editado', color: 'bg-blue-100 text-blue-700' },
-    human_rejected: { label: 'Rejeitado', color: 'bg-red-100 text-red-700' },
 }
 
 const MODALIDADE_LABELS: Record<string, string> = {
@@ -66,6 +82,46 @@ const MODALIDADE_LABELS: Record<string, string> = {
     outro: 'Outro',
 }
 
+const ALERTA_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
+    critico: { color: 'text-red-700', bg: 'bg-red-50 border-red-200', label: 'Crítico' },
+    atencao: { color: 'text-yellow-700', bg: 'bg-yellow-50 border-yellow-200', label: 'Atenção' },
+    informacao: { color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', label: 'Info' },
+}
+
+function Section({ title, count, children, highlight }: {
+    title: string
+    count?: number
+    children: React.ReactNode
+    highlight?: boolean
+}) {
+    const [open, setOpen] = useState(true)
+    return (
+        <div className={`rounded-lg border bg-white shadow-sm ${highlight ? 'border-brand-300 ring-1 ring-brand-100' : ''}`}>
+            <button
+                onClick={() => setOpen((v) => !v)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left"
+            >
+                <div className="flex items-center gap-2">
+                    <span className={`text-sm font-semibold ${highlight ? 'text-brand-700' : 'text-gray-800'}`}>{title}</span>
+                    {count !== undefined && (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">{count}</span>
+                    )}
+                    {highlight && (
+                        <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-700">para cruzamento</span>
+                    )}
+                </div>
+                <svg
+                    className={`h-4 w-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor"
+                >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+            </button>
+            {open && <div className="border-t px-4 pb-4 pt-3">{children}</div>}
+        </div>
+    )
+}
+
 export default function EditalDetailPage() {
     const { getToken, isLoaded } = useAuth()
     const params = useParams()
@@ -73,9 +129,13 @@ export default function EditalDetailPage() {
     const editalId = params.id as string
 
     const [edital, setEdital] = useState<Edital | null>(null)
-    const [requisitos, setRequisitos] = useState<Requisito[]>([])
+    const [habilitacao, setHabilitacao] = useState<Habilitacao | null>(null)
     const [loading, setLoading] = useState(true)
-    const [updatingId, setUpdatingId] = useState<string | null>(null)
+    const [approving, setApproving] = useState(false)
+    const [triggeringCrossing, setTriggeringCrossing] = useState(false)
+    const [reprocessing, setReprocessing] = useState(false)
+    const [confirmDelete, setConfirmDelete] = useState(false)
+    const [deleting, setDeleting] = useState(false)
 
     const fetchData = useCallback(async () => {
         try {
@@ -85,16 +145,17 @@ export default function EditalDetailPage() {
                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
             }
 
-            const [editalRes, reqRes] = await Promise.all([
-                fetch(`${API_URL}/api/editais/${editalId}`, { headers }),
-                fetch(`${API_URL}/api/editais/${editalId}/requisitos`, { headers }),
-            ])
-
+            const editalRes = await fetch(`${API_URL}/api/editais/${editalId}`, { headers })
             if (editalRes.ok) {
-                setEdital(await editalRes.json() as Edital)
-            }
-            if (reqRes.ok) {
-                setRequisitos(await reqRes.json() as Requisito[])
+                const e = await editalRes.json() as Edital
+                setEdital(e)
+
+                if (e.status === 'review_pending' || e.status === 'ready') {
+                    const habRes = await fetch(`${API_URL}/api/editais/${editalId}/habilitacao`, { headers })
+                    if (habRes.ok) {
+                        setHabilitacao(await habRes.json() as Habilitacao)
+                    }
+                }
             }
         } catch {
             // fail silently
@@ -107,47 +168,94 @@ export default function EditalDetailPage() {
         if (!isLoaded) return
         fetchData()
 
-        // Poll if still processing
         const interval = setInterval(() => {
-            if (!edital || ['ocr_processing', 'extracting'].includes(edital.status)) {
+            if (!edital || ['uploading', 'extracting'].includes(edital.status)) {
                 fetchData()
             }
         }, 5000)
         return () => clearInterval(interval)
     }, [fetchData, isLoaded, edital?.status])
 
-    async function updateRequisitoStatus(requisitoId: string, newStatus: string) {
-        setUpdatingId(requisitoId)
+    async function approveEdital() {
+        setApproving(true)
         try {
             const token = await getToken()
-            const res = await fetch(
-                `${API_URL}/api/editais/${editalId}/requisitos/${requisitoId}`,
-                {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                    },
-                    body: JSON.stringify({ status: newStatus }),
+            const res = await fetch(`${API_URL}/api/editais/${editalId}/approve`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 },
-            )
-
+            })
             if (res.ok) {
-                setRequisitos((prev) =>
-                    prev.map((r) => (r.id === requisitoId ? { ...r, status: newStatus } : r)),
-                )
+                setEdital((prev) => prev ? { ...prev, status: 'ready' } : prev)
             }
         } catch {
             // fail silently
         } finally {
-            setUpdatingId(null)
+            setApproving(false)
         }
     }
 
-    function getConfidenceColor(score: number): string {
-        if (score >= 80) return 'text-green-700 bg-green-50'
-        if (score >= 60) return 'text-yellow-700 bg-yellow-50'
-        return 'text-red-700 bg-red-50'
+    async function triggerCrossing() {
+        setTriggeringCrossing(true)
+        try {
+            const token = await getToken()
+            const res = await fetch(`${API_URL}/api/crossings`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ editalId }),
+            })
+            if (res.ok) {
+                const data = await res.json() as { crossingId: string }
+                router.push(`/cruzamentos/${data.crossingId}`)
+            }
+        } catch {
+            // fail silently
+        } finally {
+            setTriggeringCrossing(false)
+        }
+    }
+
+    async function deleteEdital() {
+        setDeleting(true)
+        try {
+            const token = await getToken()
+            const res = await fetch(`${API_URL}/api/editais/${editalId}`, {
+                method: 'DELETE',
+                headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            })
+            if (res.ok) router.push('/editais')
+        } catch {
+            // fail silently
+        } finally {
+            setDeleting(false)
+            setConfirmDelete(false)
+        }
+    }
+
+    async function reprocessEdital() {
+        setReprocessing(true)
+        try {
+            const token = await getToken()
+            const res = await fetch(`${API_URL}/api/editais/${editalId}/reprocess`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+            })
+            if (res.ok) {
+                setEdital((prev) => prev ? { ...prev, status: 'extracting' } : prev)
+            }
+        } catch {
+            // fail silently
+        } finally {
+            setReprocessing(false)
+        }
     }
 
     if (loading) {
@@ -165,16 +273,13 @@ export default function EditalDetailPage() {
         return (
             <div className="text-center py-20">
                 <p className="text-gray-500">Edital não encontrado.</p>
-                <Link href="/editais" className="mt-4 text-brand-600 hover:text-brand-700">
-                    ← Voltar para editais
-                </Link>
+                <Link href="/editais" className="mt-4 text-brand-600 hover:text-brand-700">← Voltar para editais</Link>
             </div>
         )
     }
 
     const statusInfo = STATUS_CONFIG[edital.status] ?? { label: edital.status, color: 'bg-gray-100 text-gray-700' }
-    const isProcessing = ['ocr_processing', 'extracting'].includes(edital.status)
-    const lowConfidenceCount = requisitos.filter((r) => r.aiConfidenceScore < 70 && r.status === 'ai_extracted').length
+    const isProcessing = ['uploaded', 'extracting'].includes(edital.status)
 
     return (
         <div>
@@ -196,26 +301,121 @@ export default function EditalDetailPage() {
                             <p className="mt-1 text-sm text-gray-500">{edital.fileName}</p>
                         )}
                     </div>
-                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${statusInfo.color}`}>
-                        {isProcessing && (
-                            <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
+                    <div className="flex items-center gap-3">
+                        {/* Delete button */}
+                        {confirmDelete ? (
+                            <div className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 px-3 py-2">
+                                <span className="text-sm text-red-700">Confirmar exclusão?</span>
+                                <button
+                                    onClick={deleteEdital}
+                                    disabled={deleting}
+                                    className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                                >
+                                    {deleting ? 'Excluindo...' : 'Sim, excluir'}
+                                </button>
+                                <button
+                                    onClick={() => setConfirmDelete(false)}
+                                    className="rounded bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 border border-gray-300"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setConfirmDelete(true)}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                </svg>
+                                Excluir
+                            </button>
                         )}
-                        {statusInfo.label}
-                    </span>
+                        {edital.status === 'error' && (
+                            <button
+                                onClick={reprocessEdital}
+                                disabled={reprocessing}
+                                className="inline-flex items-center gap-2 rounded-md border border-orange-300 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50 transition-colors"
+                            >
+                                {reprocessing ? (
+                                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                    </svg>
+                                )}
+                                {reprocessing ? 'Reprocessando...' : 'Reprocessar'}
+                            </button>
+                        )}
+                        {edital.status === 'review_pending' && (
+                            <button
+                                onClick={approveEdital}
+                                disabled={approving}
+                                className="inline-flex items-center gap-2 rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors"
+                            >
+                                {approving ? (
+                                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                    </svg>
+                                )}
+                                {approving ? 'Aprovando...' : 'Aprovar Extração'}
+                            </button>
+                        )}
+                        {edital.status === 'ready' && (
+                            <button
+                                onClick={triggerCrossing}
+                                disabled={triggeringCrossing}
+                                className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 transition-colors"
+                            >
+                                {triggeringCrossing ? (
+                                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                )}
+                                {triggeringCrossing ? 'Iniciando...' : 'Iniciar Cruzamento'}
+                            </button>
+                        )}
+                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${statusInfo.color}`}>
+                            {isProcessing && (
+                                <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                            )}
+                            {statusInfo.label}
+                        </span>
+                    </div>
                 </div>
             </div>
 
             {/* Metadata Cards */}
             <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
                 <MetaCard label="Órgão" value={edital.orgaoLicitante} />
+                <MetaCard label="UASG" value={edital.uasg} />
                 <MetaCard label="Modalidade" value={edital.modalidade ? MODALIDADE_LABELS[edital.modalidade] ?? edital.modalidade : null} />
                 <MetaCard label="Valor Estimado" value={edital.valorEstimado ? `R$ ${parseFloat(edital.valorEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : null} />
                 <MetaCard label="Data Abertura" value={edital.dataAbertura ? new Date(edital.dataAbertura).toLocaleDateString('pt-BR') : null} />
-                <MetaCard label="Páginas" value={edital.pageCount?.toString()} />
-                <MetaCard label="Tipo PDF" value={edital.pdfType} />
+                <MetaCard label="Prazo Execução" value={edital.prazoExecucaoMeses ? `${edital.prazoExecucaoMeses} meses` : null} />
+            </div>
+
+            {/* Extra metadata */}
+            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                <MetaCard label="Regime de Execução" value={edital.regimeExecucao} />
+                <MetaCard label="Lei Regente" value={edital.leiRegente} />
+                <MetaCard label="Admite Consórcio" value={edital.admiteConsorcio == null ? null : edital.admiteConsorcio ? 'Sim' : 'Não'} />
             </div>
 
             {/* Objeto */}
@@ -234,140 +434,241 @@ export default function EditalDetailPage() {
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
                     <p className="text-sm text-blue-800">
-                        {edital.status === 'ocr_processing'
-                            ? 'O PDF está sendo processado por OCR. Isso pode levar alguns minutos...'
-                            : 'Os requisitos estão sendo extraídos pela IA. Atualizando automaticamente...'}
+                        {edital.status === 'uploaded'
+                            ? 'O edital está na fila de processamento...'
+                            : 'Os dados de habilitação estão sendo extraídos pelo Claude. Atualizando automaticamente...'}
                     </p>
                 </div>
             )}
 
-            {/* Low Confidence Warning */}
-            {lowConfidenceCount > 0 && (
-                <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                    <div className="flex items-center gap-2">
-                        <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                        </svg>
-                        <p className="text-sm font-medium text-amber-800">
-                            {lowConfidenceCount} requisito(s) com confiança abaixo de 70% precisam de revisão
-                        </p>
-                    </div>
+            {/* Habilitação Data */}
+            {habilitacao && (
+                <div className="space-y-4">
+                    {/* Alertas */}
+                    {habilitacao.alertas.length > 0 && (
+                        <div className="space-y-2">
+                            {habilitacao.alertas.map((alerta) => {
+                                const cfg = ALERTA_CONFIG[alerta.nivel] ?? ALERTA_CONFIG['informacao']!
+                                return (
+                                    <div key={alerta.id} className={`flex items-start gap-3 rounded-lg border p-3 ${cfg.bg}`}>
+                                        <span className={`shrink-0 text-xs font-bold uppercase ${cfg.color}`}>{cfg.label}</span>
+                                        {alerta.categoria && <span className="text-xs text-gray-500">[{alerta.categoria}]</span>}
+                                        <p className={`text-sm ${cfg.color}`}>{alerta.descricao}</p>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+
+                    {/* 1. Habilitação Jurídica */}
+                    {habilitacao.habilitacaoJuridica.length > 0 && (
+                        <Section title="1 — Habilitação Jurídica" count={habilitacao.habilitacaoJuridica.length}>
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b text-xs text-gray-500">
+                                        <th className="pb-2 text-left font-medium">Documento</th>
+                                        <th className="pb-2 text-left font-medium">Aplica a</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {habilitacao.habilitacaoJuridica.map((item) => (
+                                        <tr key={item.id}>
+                                            <td className="py-2 pr-4 text-gray-900">{item.documento}</td>
+                                            <td className="py-2 text-gray-500">{item.aplicaA ?? '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </Section>
+                    )}
+
+                    {/* 2. Regularidade Fiscal */}
+                    {habilitacao.regularidadeFiscal.length > 0 && (
+                        <Section title="2 — Regularidade Fiscal, Social e Trabalhista" count={habilitacao.regularidadeFiscal.length}>
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b text-xs text-gray-500">
+                                        <th className="pb-2 text-left font-medium">Documento</th>
+                                        <th className="pb-2 text-left font-medium">Sigla</th>
+                                        <th className="pb-2 text-left font-medium">Validade</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {habilitacao.regularidadeFiscal.map((item) => (
+                                        <tr key={item.id}>
+                                            <td className="py-2 pr-4 text-gray-900">{item.documento}</td>
+                                            <td className="py-2 pr-4 text-gray-500">{item.sigla ?? '—'}</td>
+                                            <td className="py-2 text-gray-500">{item.validadeDias ? `${item.validadeDias} dias` : (item.observacao ?? '—')}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </Section>
+                    )}
+
+                    {/* 3. Qualificação Técnica (key-value) */}
+                    {habilitacao.qualificacaoTecnica && (
+                        <Section title="3 — Qualificação Técnica — Dados Gerais">
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                                <KV label="Registro Conselho" value={habilitacao.qualificacaoTecnica.registroConselho} />
+                                <KV label="Visita Técnica" value={habilitacao.qualificacaoTecnica.exigeVisitaTecnica ? (habilitacao.qualificacaoTecnica.visitaTipo ?? 'Sim') : 'Não exigida'} />
+                                <KV label="Escritório Local" value={habilitacao.qualificacaoTecnica.exigeEscritorioLocal ? (habilitacao.qualificacaoTecnica.escritorioDescricao ?? 'Exigido') : 'Não exigido'} />
+                            </div>
+                        </Section>
+                    )}
+
+                    {/* 4. Profissionais Exigidos */}
+                    {habilitacao.profissionais.length > 0 && (
+                        <Section title="4 — Profissionais Exigidos" count={habilitacao.profissionais.length}>
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b text-xs text-gray-500">
+                                        <th className="pb-2 text-left font-medium">Cargo / Função</th>
+                                        <th className="pb-2 text-left font-medium">Conselho</th>
+                                        <th className="pb-2 text-left font-medium">Qtd</th>
+                                        <th className="pb-2 text-left font-medium">CBO</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {habilitacao.profissionais.map((item) => (
+                                        <tr key={item.id}>
+                                            <td className="py-2 pr-4 text-gray-900">{item.cargo}</td>
+                                            <td className="py-2 pr-4 text-gray-500">{item.conselho ?? '—'}</td>
+                                            <td className="py-2 pr-4 text-gray-500">{item.quantidade ?? '—'}</td>
+                                            <td className="py-2 text-gray-500">{item.cbo ?? '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </Section>
+                    )}
+
+                    {/* 5. Parcelas de Relevância — HIGHLIGHT */}
+                    <Section title="5 — Parcelas de Relevância" count={habilitacao.parcelasRelevancia.length} highlight>
+                        {habilitacao.parcelasRelevancia.length === 0 ? (
+                            <p className="text-sm text-gray-400 italic">Nenhuma parcela de relevância extraída.</p>
+                        ) : (
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b text-xs text-gray-500">
+                                        <th className="pb-2 text-left font-medium">Serviço / Obra</th>
+                                        <th className="pb-2 text-left font-medium">Qtd Mínima</th>
+                                        <th className="pb-2 text-left font-medium">Unidade</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {habilitacao.parcelasRelevancia.map((item) => (
+                                        <tr key={item.id}>
+                                            <td className="py-2 pr-4 font-medium text-brand-700">{item.servico}</td>
+                                            <td className="py-2 pr-4 text-gray-900 font-semibold">{item.quantidadeMinima ?? '—'}</td>
+                                            <td className="py-2 text-gray-500">{item.unidade ?? '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </Section>
+
+                    {/* 6. Atestados de Profissionais */}
+                    {habilitacao.atestadosProfissionais.length > 0 && (
+                        <Section title="6 — Atestados de Profissionais" count={habilitacao.atestadosProfissionais.length}>
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b text-xs text-gray-500">
+                                        <th className="pb-2 text-left font-medium">Profissional</th>
+                                        <th className="pb-2 text-left font-medium">Características Exigidas</th>
+                                        <th className="pb-2 text-left font-medium">Exige CAT</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {habilitacao.atestadosProfissionais.map((item) => (
+                                        <tr key={item.id}>
+                                            <td className="py-2 pr-4 text-gray-900">{item.profissional}</td>
+                                            <td className="py-2 pr-4 text-gray-500">{item.caracteristicasExigidas ?? '—'}</td>
+                                            <td className="py-2 text-gray-500">{item.exigeCat ? 'Sim' : 'Não'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </Section>
+                    )}
+
+                    {/* 7. Qualificação Financeira (key-value) */}
+                    {habilitacao.qualificacaoFinanceira && (
+                        <Section title="7 — Qualificação Econômico-Financeira">
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                                <KV label="Exige Balanço" value={habilitacao.qualificacaoFinanceira.exigeBalanco ? `Sim (${habilitacao.qualificacaoFinanceira.balancoExercicios ?? '?'} exercícios)` : 'Não'} />
+                                <KV label="Patrimônio Líquido Mínimo" value={habilitacao.qualificacaoFinanceira.patrimonioLiquidoMinimo ? `R$ ${parseFloat(habilitacao.qualificacaoFinanceira.patrimonioLiquidoMinimo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : null} />
+                                <KV label="LC Mínimo" value={habilitacao.qualificacaoFinanceira.lcMinimo} />
+                                <KV label="LG Mínimo" value={habilitacao.qualificacaoFinanceira.lgMinimo} />
+                                <KV label="SG Mínimo" value={habilitacao.qualificacaoFinanceira.sgMinimo} />
+                                <KV label="Certidão de Falência" value={habilitacao.qualificacaoFinanceira.exigeCertidaoFalencia ? `Sim${habilitacao.qualificacaoFinanceira.certidaoFalenciaPrazoDias ? ` (${habilitacao.qualificacaoFinanceira.certidaoFalenciaPrazoDias} dias)` : ''}` : 'Não'} />
+                                <KV label="Capital Social Mínimo" value={habilitacao.qualificacaoFinanceira.capitalSocialMinimo ? `R$ ${parseFloat(habilitacao.qualificacaoFinanceira.capitalSocialMinimo).toLocaleString('pt-BR')}` : null} />
+                                <KV label="Garantia de Proposta" value={habilitacao.qualificacaoFinanceira.exigeGarantiaProposta ? `${habilitacao.qualificacaoFinanceira.garantiaPropostaPercentual ?? '?'}%` : 'Não'} />
+                            </div>
+                            {habilitacao.qualificacaoFinanceira.observacao && (
+                                <p className="mt-3 text-xs text-gray-500 italic">{habilitacao.qualificacaoFinanceira.observacao}</p>
+                            )}
+                        </Section>
+                    )}
+
+                    {/* 8. Declarações */}
+                    {habilitacao.declaracoes.length > 0 && (
+                        <Section title="8 — Declarações" count={habilitacao.declaracoes.length}>
+                            <ul className="space-y-2 text-sm">
+                                {habilitacao.declaracoes.map((item) => (
+                                    <li key={item.id} className="flex items-start gap-2">
+                                        <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-gray-400" />
+                                        <div>
+                                            <span className="text-gray-900">{item.descricao}</span>
+                                            {item.baseLegal && <span className="ml-2 text-xs text-gray-400">({item.baseLegal})</span>}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Section>
+                    )}
+
+                    {/* 9. Declarações Especiais (lei estadual) */}
+                    {habilitacao.declaracoesEspeciais.length > 0 && (
+                        <Section title="9 — Declarações por Lei Estadual" count={habilitacao.declaracoesEspeciais.length}>
+                            <ul className="space-y-2 text-sm">
+                                {habilitacao.declaracoesEspeciais.map((item) => (
+                                    <li key={item.id} className="flex items-start gap-2">
+                                        <span className="mt-0.5 shrink-0 rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700">
+                                            {item.uf ?? 'UF?'}
+                                        </span>
+                                        <div>
+                                            <span className="text-gray-900">{item.descricao}</span>
+                                            {item.lei && <span className="ml-2 text-xs text-gray-400">({item.lei})</span>}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Section>
+                    )}
+
+                    {/* 10. Anexos Referenciados */}
+                    {habilitacao.anexosReferenciados.length > 0 && (
+                        <Section title="10 — Anexos Referenciados" count={habilitacao.anexosReferenciados.length}>
+                            <ul className="space-y-1 text-sm">
+                                {habilitacao.anexosReferenciados.map((item) => (
+                                    <li key={item.id} className="flex items-center gap-2">
+                                        <span className="font-medium text-gray-700">{item.identificacao}:</span>
+                                        <span className="text-gray-500">{item.descricao ?? '—'}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </Section>
+                    )}
                 </div>
             )}
 
-            {/* Requisitos Section */}
-            <div>
-                <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                        Requisitos Extraídos ({requisitos.length})
-                    </h2>
-                </div>
-
-                {requisitos.length === 0 && !isProcessing ? (
-                    <div className="rounded-lg border bg-white p-8 text-center shadow-sm">
-                        <p className="text-sm text-gray-500">
-                            {edital.status === 'uploaded'
-                                ? 'O edital ainda não foi processado.'
-                                : edital.status === 'error'
-                                    ? 'Houve um erro durante o processamento.'
-                                    : 'Nenhum requisito encontrado neste edital.'}
-                        </p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {requisitos.map((req) => {
-                            const reqStatus = REQUISITO_STATUS_CONFIG[req.status] ?? { label: req.status, color: 'bg-gray-100 text-gray-700' }
-                            const lowConf = req.aiConfidenceScore < 70 && req.status === 'ai_extracted'
-
-                            return (
-                                <div
-                                    key={req.id}
-                                    className={`rounded-lg border bg-white p-4 shadow-sm transition-all ${lowConf ? 'border-amber-300 ring-1 ring-amber-200' : ''
-                                        }`}
-                                >
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div className="flex-1">
-                                            {/* Category + Lote */}
-                                            <div className="mb-1 flex items-center gap-2">
-                                                {req.lote && (
-                                                    <span className="text-xs font-medium text-gray-500">
-                                                        Lote: {req.lote}
-                                                    </span>
-                                                )}
-                                                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${reqStatus.color}`}>
-                                                    {reqStatus.label}
-                                                </span>
-                                                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${getConfidenceColor(req.aiConfidenceScore)}`}>
-                                                    Confiança: {req.aiConfidenceScore}%
-                                                </span>
-                                                {req.paginaReferencia && (
-                                                    <span className="text-xs text-gray-400">
-                                                        p. {req.paginaReferencia}
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* Description */}
-                                            <p className="text-sm font-medium text-gray-900">{req.descricao}</p>
-
-                                            {/* Quantitative */}
-                                            {req.quantitativoExigido && (
-                                                <p className="mt-1 text-xs text-gray-600">
-                                                    Quantitativo: <span className="font-semibold">{req.quantitativoExigido} {req.unidade ?? ''}</span>
-                                                </p>
-                                            )}
-
-                                            {/* Original excerpt */}
-                                            {req.trechoOriginal && (
-                                                <details className="mt-2">
-                                                    <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600">
-                                                        Ver trecho original
-                                                    </summary>
-                                                    <p className="mt-1 rounded bg-gray-50 p-2 text-xs text-gray-600 italic">
-                                                        &ldquo;{req.trechoOriginal}&rdquo;
-                                                    </p>
-                                                </details>
-                                            )}
-                                        </div>
-
-                                        {/* Action Buttons */}
-                                        {req.status === 'ai_extracted' && (
-                                            <div className="flex shrink-0 gap-1">
-                                                <button
-                                                    onClick={() => updateRequisitoStatus(req.id, 'human_approved')}
-                                                    disabled={updatingId === req.id}
-                                                    className="rounded-md border border-green-300 bg-green-50 p-1.5 text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors"
-                                                    title="Aprovar"
-                                                >
-                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                                    </svg>
-                                                </button>
-                                                <button
-                                                    onClick={() => updateRequisitoStatus(req.id, 'human_rejected')}
-                                                    disabled={updatingId === req.id}
-                                                    className="rounded-md border border-red-300 bg-red-50 p-1.5 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
-                                                    title="Rejeitar"
-                                                >
-                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
-                )}
-            </div>
-
             {/* Cost Info */}
-            {(edital.aiExtractionCostUsd || edital.ocrCostUsd) && (
+            {edital.aiExtractionCostUsd && (
                 <div className="mt-8 rounded-lg border bg-gray-50 p-3">
                     <p className="text-xs text-gray-500">
-                        Custo de processamento: OCR ${edital.ocrCostUsd ?? '0'} + IA ${edital.aiExtractionCostUsd ?? '0'} USD
+                        Custo de extração: ${edital.aiExtractionCostUsd} USD (Claude)
                     </p>
                 </div>
             )}
@@ -380,6 +681,15 @@ function MetaCard({ label, value }: { label: string; value: string | null | unde
         <div className="rounded-lg border bg-white p-3 shadow-sm">
             <p className="text-xs font-medium text-gray-500">{label}</p>
             <p className="mt-1 text-sm font-semibold text-gray-900">{value ?? '—'}</p>
+        </div>
+    )
+}
+
+function KV({ label, value }: { label: string; value: string | null | undefined }) {
+    return (
+        <div>
+            <span className="text-xs text-gray-500">{label}: </span>
+            <span className="text-sm text-gray-900">{value ?? '—'}</span>
         </div>
     )
 }

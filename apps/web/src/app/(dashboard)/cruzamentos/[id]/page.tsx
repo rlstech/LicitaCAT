@@ -32,14 +32,31 @@ interface Crossing {
     createdAt: string
 }
 
+interface CatMatch {
+    crossingItemId: string
+    catId: string
+    catItemId: string | null
+    nivelMatch: string
+    scoreSimilaridade: string
+    avaliacaoLlm: string
+    justificativaLlm: string
+    rankPosicao: number
+    catEmpresaContratante: string | null
+    catTipoObra: string | null
+    catNumeroCat: string | null
+}
+
 interface CrossingItem {
     id: string
-    requisitoId: string
     resultado: string
     aiJustificativa: string | null
     scoreSimilaridadeMax: string | null
     humanOverride: boolean
     humanOverrideNote: string | null
+    parcelaServico: string
+    parcelaUnidade: string | null
+    parcelaQuantidadeMinima: string | null
+    catMatches: CatMatch[]
 }
 
 const RESULT_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -223,9 +240,10 @@ export default function CruzamentoDetailPage() {
                             return (
                                 <div key={item.id} className={`rounded-lg border p-4 ${resInfo.bg} transition-all`}>
                                     <div className="flex items-start justify-between gap-4">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className={`text-sm font-bold ${resInfo.color}`}>{resInfo.label}</span>
+                                        <div className="flex-1 min-w-0">
+                                            {/* Header row */}
+                                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                                                <span className={`shrink-0 text-sm font-bold ${resInfo.color}`}>{resInfo.label}</span>
                                                 {item.humanOverride && (
                                                     <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Revisado</span>
                                                 )}
@@ -233,19 +251,78 @@ export default function CruzamentoDetailPage() {
                                                     <span className="text-xs text-gray-500">Sim: {(parseFloat(item.scoreSimilaridadeMax) * 100).toFixed(1)}%</span>
                                                 )}
                                             </div>
+
+                                            {/* Parcela de relevância */}
+                                            <p className="text-sm font-medium text-gray-900 mb-1">{item.parcelaServico}</p>
+                                            {item.parcelaQuantidadeMinima && (
+                                                <p className="text-xs text-gray-600 mb-2">
+                                                    Qtd mínima: <span className="font-semibold">{item.parcelaQuantidadeMinima} {item.parcelaUnidade ?? ''}</span>
+                                                </p>
+                                            )}
+
+                                            {/* AI justification */}
                                             {item.aiJustificativa && (
-                                                <p className="text-sm text-gray-700">{item.aiJustificativa}</p>
+                                                <p className="text-xs text-gray-600 italic mb-2">{item.aiJustificativa}</p>
+                                            )}
+
+                                            {/* Cat matches */}
+                                            {item.catMatches.length > 0 && (
+                                                <details className="mt-2">
+                                                    <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600">
+                                                        {item.catMatches.length} CAT(s) candidata(s)
+                                                    </summary>
+                                                    <div className="mt-2 space-y-1 pl-2 border-l-2 border-gray-200">
+                                                        {item.catMatches.map((match, idx) => {
+                                                            const avColor = match.avaliacaoLlm === 'atende' ? 'text-green-700' :
+                                                                match.avaliacaoLlm === 'atende_parcialmente' ? 'text-yellow-700' : 'text-red-600'
+                                                            return (
+                                                                <div key={idx} className="rounded bg-white/70 p-2 text-xs">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`font-medium ${avColor}`}>
+                                                                            {match.avaliacaoLlm === 'atende' ? '✓' : match.avaliacaoLlm === 'atende_parcialmente' ? '~' : '✗'}
+                                                                            {' '}{match.avaliacaoLlm.replace(/_/g, ' ')}
+                                                                        </span>
+                                                                        <span className="text-gray-500">
+                                                                            {(parseFloat(match.scoreSimilaridade) * 100).toFixed(1)}% sim.
+                                                                        </span>
+                                                                        <span className="text-gray-400 capitalize">{match.nivelMatch}</span>
+                                                                    </div>
+                                                                    <div className="text-gray-600 mt-0.5">
+                                                                        {match.catEmpresaContratante ?? match.catTipoObra ?? 'CAT'}
+                                                                        {match.catNumeroCat && <span className="text-gray-400"> · {match.catNumeroCat}</span>}
+                                                                    </div>
+                                                                    {match.justificativaLlm && (
+                                                                        <p className="text-gray-500 mt-0.5 italic">{match.justificativaLlm}</p>
+                                                                    )}
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </details>
                                             )}
                                         </div>
 
                                         {/* Override Buttons */}
-                                        {!item.humanOverride && (
-                                            <div className="flex shrink-0 gap-1">
-                                                <button onClick={() => overrideItem(item.id, 'atendido')} disabled={overriding === item.id} className="rounded border border-green-300 bg-white p-1 text-green-700 hover:bg-green-50 disabled:opacity-50 text-xs px-2" title="Atendido">✓</button>
-                                                <button onClick={() => overrideItem(item.id, 'atendido_parcialmente')} disabled={overriding === item.id} className="rounded border border-yellow-300 bg-white p-1 text-yellow-700 hover:bg-yellow-50 disabled:opacity-50 text-xs px-2" title="Parcial">~</button>
-                                                <button onClick={() => overrideItem(item.id, 'gap')} disabled={overriding === item.id} className="rounded border border-red-300 bg-white p-1 text-red-700 hover:bg-red-50 disabled:opacity-50 text-xs px-2" title="Gap">✗</button>
-                                            </div>
-                                        )}
+                                        <div className="flex shrink-0 flex-col gap-1">
+                                            <button
+                                                onClick={() => overrideItem(item.id, 'atendido')}
+                                                disabled={overriding === item.id || item.resultado === 'atendido'}
+                                                className="rounded border border-green-300 bg-white px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-40 transition-colors"
+                                                title="Marcar como Atendido"
+                                            >✓</button>
+                                            <button
+                                                onClick={() => overrideItem(item.id, 'atendido_parcialmente')}
+                                                disabled={overriding === item.id || item.resultado === 'atendido_parcialmente'}
+                                                className="rounded border border-yellow-300 bg-white px-2 py-1 text-xs text-yellow-700 hover:bg-yellow-50 disabled:opacity-40 transition-colors"
+                                                title="Marcar como Parcial"
+                                            >~</button>
+                                            <button
+                                                onClick={() => overrideItem(item.id, 'gap')}
+                                                disabled={overriding === item.id || item.resultado === 'gap'}
+                                                className="rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                                                title="Marcar como Gap"
+                                            >✗</button>
+                                        </div>
                                     </div>
                                 </div>
                             )

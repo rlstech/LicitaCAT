@@ -8,7 +8,9 @@ As CATs registram a experiência técnica de profissionais (engenheiros, arquite
 - Itens individuais de serviços quando listados
 
 Seja preciso com os quantitativos — eles são essenciais para o cruzamento com requisitos de editais.
-IMPORTANTE: NÃO inclua itens com quantidade zero, nula ou sem quantidade definida.`
+IMPORTANTE: extraia APENAS itens que possuem quantidade numérica explícita no documento. Títulos de seção, agrupamentos e categorias (ex: "03.03.000 ESTRUTURAS METÁLICAS", "04.01.100 Paredes") NÃO devem ser extraídos pois não têm quantidade.
+SELOS/CARIMBOS: documentos CAT frequentemente possuem selos sobrepostos do CREA/CAU (ex: "Atestado registrado mediante vinculação à respectiva CAT - CREA-DF - A 0063.414"). Ignore completamente o texto do selo. Se o selo cobrir a coluna de unidade de um item, use UN como unidade desse item.
+UNIDADE: coloque APENAS a sigla (ex: M2, M3, KG, UN, M, CX, VB, LS, HR). NUNCA inclua números na unidade.`
 
 export function buildCatExtractionUserPrompt(catText: string): string {
   return `Extraia as informações desta Certidão de Acervo Técnico (CAT):
@@ -33,26 +35,27 @@ Responda no formato:
       <numero_item>número ou null</numero_item>
       <descricao>descrição do item de serviço</descricao>
       <unidade>unidade ou null</unidade>
-      <quantidade>valor numérico maior que zero (NÃO incluir itens com quantidade zero ou nula)</quantidade>
+      <quantidade>valor numérico explícito do documento (NÃO incluir o item se não houver quantidade)</quantidade>
     </item>
   </itens>
 </cat>`
 }
 
 export function buildCatItemsOnlyUserPrompt(pageRange: string): string {
-  return `Extraia APENAS os itens de serviço desta seção da CAT (páginas ${pageRange}).
-NÃO inclua itens com quantidade zero, nula ou sem quantidade definida.
-NÃO repita itens já extraídos de páginas anteriores.
+  return `Extraia os itens de serviço desta seção da CAT (páginas ${pageRange}).
+REGRA PRINCIPAL: só extraia itens que possuem QUANTIDADE numérica explícita no documento.
+Títulos de seção, agrupamentos e categorias sem quantidade (ex: "ESTRUTURAS METÁLICAS", "Paredes", "Esquadrias") NÃO devem ser incluídos.
+UNIDADE: coloque APENAS a sigla (ex: M2, M3, KG, UN, M, CX, VB, HR). NUNCA coloque números na unidade.
 
 Responda no formato:
 <itens>
   <item>
-    <numero_item>número ou null</numero_item>
-    <descricao>descrição do item de serviço</descricao>
-    <unidade>unidade ou null</unidade>
-    <quantidade>valor numérico maior que zero</quantidade>
+    <numero_item>número do item ou null</numero_item>
+    <descricao>descrição do serviço</descricao>
+    <unidade>sigla da unidade</unidade>
+    <quantidade>valor numérico explícito do documento</quantidade>
   </item>
 </itens>
 
-Se não houver itens com quantidade válida nesta seção, responda com <itens></itens>.`
+Se não houver itens com quantidade nesta seção, responda com <itens></itens>.`
 }

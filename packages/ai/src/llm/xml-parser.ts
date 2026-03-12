@@ -11,6 +11,7 @@ export interface ParsedRequisito {
   paginaReferencia: number | null
   quantitativoExigido: number | null
   unidade: string | null
+  referenciaAnexo: string | null
   aiConfidenceScore: number
 }
 
@@ -21,6 +22,51 @@ export interface ParsedEditalMetadata {
   objeto: string | null
   valorEstimado: number | null
   dataAbertura: string | null
+  regimeExecucao: string | null
+  prazoExecucao: string | null
+  leiRegente: string | null
+  admiteConsorcio: string | null
+  exigeSubcontratacao: string | null
+  exigeVisitaTecnica: string | null
+}
+
+/**
+ * Parses a numeric string that may be in Brazilian format (1.234,56)
+ * or US/international format (1234.56 or 1,234.56).
+ *
+ * Rules:
+ *  - Both '.' and ',' present AND last separator is ',' → BR format: remove dots, replace comma with dot
+ *  - Both '.' and ',' present AND last separator is '.' → US format: remove commas
+ *  - Only ',' present → decimal comma: replace with dot
+ *  - Only '.' present → standard decimal: use as-is
+ */
+function parseNumericBR(str: string): number | null {
+  const cleaned = str.replace(/[^\d.,\-]/g, '').trim()
+  if (!cleaned) return null
+
+  const hasDot = cleaned.includes('.')
+  const hasComma = cleaned.includes(',')
+
+  let normalized: string
+
+  if (hasDot && hasComma) {
+    const lastDot = cleaned.lastIndexOf('.')
+    const lastComma = cleaned.lastIndexOf(',')
+    if (lastComma > lastDot) {
+      // BR format: 10.025,65 → remove dots → replace comma with dot
+      normalized = cleaned.replace(/\./g, '').replace(',', '.')
+    } else {
+      // US format: 10,025.65 → remove commas
+      normalized = cleaned.replace(/,/g, '')
+    }
+  } else if (hasComma && !hasDot) {
+    normalized = cleaned.replace(',', '.')
+  } else {
+    normalized = cleaned
+  }
+
+  const num = parseFloat(normalized)
+  return isNaN(num) ? null : num
 }
 
 function extractTag(xml: string, tag: string): string | null {
@@ -47,10 +93,16 @@ function extractAllBlocks(xml: string, tag: string): string[] {
 }
 
 const VALID_CATEGORIAS = new Set([
+  'habilitacao_juridica',
+  'habilitacao_fiscal_social_trabalhista',
+  'qualificacao_economico_financeira',
+  'qualificacao_tecnico_operacional',
+  'qualificacao_tecnico_profissional',
+  'declaracoes_outros',
+  // legacy values kept for backwards compatibility
   'qualificacao_tecnica',
   'qualificacao_economica',
   'regularidade_fiscal',
-  'habilitacao_juridica',
   'outro',
 ])
 
@@ -82,7 +134,7 @@ export function parseEditalRequisitosXml(xml: string): ParsedRequisito[] {
     const paginaReferencia = paginaStr ? parseInt(paginaStr, 10) : null
 
     const quantStr = extractTag(block, 'quantitativo_exigido')
-    const quantitativoExigido = quantStr ? parseFloat(quantStr.replace(/[^\d.,\-]/g, '').replace(',', '.')) : null
+    const quantitativoExigido = quantStr ? parseNumericBR(quantStr) : null
 
     const scoreStr = extractTag(block, 'ai_confidence_score')
     let aiConfidenceScore = scoreStr ? parseInt(scoreStr, 10) : 50
@@ -97,6 +149,7 @@ export function parseEditalRequisitosXml(xml: string): ParsedRequisito[] {
       paginaReferencia: paginaReferencia && !isNaN(paginaReferencia) ? paginaReferencia : null,
       quantitativoExigido: quantitativoExigido && !isNaN(quantitativoExigido) ? quantitativoExigido : null,
       unidade: extractTag(block, 'unidade'),
+      referenciaAnexo: extractTag(block, 'referencia_anexo'),
       aiConfidenceScore,
     })
   }
@@ -109,9 +162,7 @@ export function parseEditalMetadataXml(xml: string): ParsedEditalMetadata {
   const modalidade = modalidadeRaw && VALID_MODALIDADES.has(modalidadeRaw) ? modalidadeRaw : null
 
   const valorStr = extractTag(xml, 'valor_estimado')
-  const valorEstimado = valorStr
-    ? parseFloat(valorStr.replace(/[^\d.,\-]/g, '').replace(',', '.'))
-    : null
+  const valorEstimado = valorStr ? parseNumericBR(valorStr) : null
 
   return {
     orgaoLicitante: extractTag(xml, 'orgao_licitante'),
@@ -120,6 +171,12 @@ export function parseEditalMetadataXml(xml: string): ParsedEditalMetadata {
     objeto: extractTag(xml, 'objeto'),
     valorEstimado: valorEstimado && !isNaN(valorEstimado) ? valorEstimado : null,
     dataAbertura: extractTag(xml, 'data_abertura'),
+    regimeExecucao: extractTag(xml, 'regime_execucao'),
+    prazoExecucao: extractTag(xml, 'prazo_execucao'),
+    leiRegente: extractTag(xml, 'lei_regente'),
+    admiteConsorcio: extractTag(xml, 'admite_consorcio'),
+    exigeSubcontratacao: extractTag(xml, 'exige_subcontratacao'),
+    exigeVisitaTecnica: extractTag(xml, 'exige_visita_tecnica'),
   }
 }
 
@@ -152,9 +209,7 @@ export function parseCatExtractionXml(xml: string): ParsedCatData {
   if (aiConfidenceScore > 100) aiConfidenceScore = 100
 
   const quantStr = extractTag(xml, 'quantitativo_valor')
-  const quantitativoValor = quantStr
-    ? parseFloat(quantStr.replace(/[^\d.,\-]/g, '').replace(',', '.'))
-    : null
+  const quantitativoValor = quantStr ? parseNumericBR(quantStr) : null
 
   // Parse items
   const itemBlocks = extractAllBlocks(xml, 'item')
@@ -168,9 +223,7 @@ export function parseCatExtractionXml(xml: string): ParsedCatData {
     const numeroItem = numStr ? parseInt(numStr, 10) : null
 
     const qtdStr = extractTag(block, 'quantidade')
-    const quantidade = qtdStr
-      ? parseFloat(qtdStr.replace(/[^\d.,\-]/g, '').replace(',', '.'))
-      : null
+    const quantidade = qtdStr ? parseNumericBR(qtdStr) : null
 
     const qtdFinal = quantidade && !isNaN(quantidade) && quantidade > 0 ? quantidade : null
     // Skip items with no valid positive quantity
@@ -210,9 +263,7 @@ export function parseCatItemsOnlyXml(xml: string): ParsedCatItem[] {
     const numeroItem = numStr ? parseInt(numStr, 10) : null
 
     const qtdStr = extractTag(block, 'quantidade')
-    const quantidade = qtdStr
-      ? parseFloat(qtdStr.replace(/[^\d.,\-]/g, '').replace(',', '.'))
-      : null
+    const quantidade = qtdStr ? parseNumericBR(qtdStr) : null
 
     const qtdFinal = quantidade && !isNaN(quantidade) && quantidade > 0 ? quantidade : null
     if (qtdFinal === null) continue

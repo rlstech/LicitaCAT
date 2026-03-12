@@ -25,8 +25,9 @@ const S3_BUCKET = process.env['S3_BUCKET'] ?? ''
 const S3_REGION = process.env['S3_REGION'] ?? 'us-east-1'
 const S3_ENDPOINT = process.env['S3_ENDPOINT']
 
-// Form Parser online limit is 15 pages
-const CHUNK_SIZE = 15
+// Pages per LLM call. Smaller = fewer items per call = less risk of hitting the
+// 8192-token output limit. Form Parser also supports up to 15 pages, so 5 is safe for both.
+const CHUNK_SIZE = 5
 
 const connection = {
     host: new URL(REDIS_URL).hostname,
@@ -81,13 +82,63 @@ async function extractPdfPageRange(
         pageIndices.push(i)
     }
 
-    const copiedPages = await newDoc.copyPagesFrom(srcDoc, pageIndices)
+    const copiedPages = await newDoc.copyPages(srcDoc, pageIndices)
     for (const page of copiedPages) {
         newDoc.addPage(page)
     }
 
     const bytes = await newDoc.save()
     return Buffer.from(bytes)
+}
+
+/**
+ * Stamp/seal text patterns commonly found overlaid on CAT documents.
+ * The CREA/CAU seal covers part of the table (usually the unit column) and
+ * its text gets mixed into item descriptions during PDF text extraction.
+ */
+const STAMP_PATTERNS: RegExp[] = [
+    /\s*Atestado\s+registrado\s+mediante\s+vincula[cç][aã]o\s+[aà]\s+respectiva\s+CAT\s*/gi,
+    /\s*registrado\s+mediante\s+CAT\s*/gi,
+    /\s*vincula[cç][aã]o\s+[aà]\s+respectiva\s*/gi,
+    /\s*Atestado\s+registrado\s+mediante\s*/gi,
+    /\s*CREA\s*[-–]\s*[A-Z]{2}\s*/g,
+    /\s*CAU\s*[-–]\s*[A-Z]{2}\s*/g,
+    // Registration codes like "A 0063.414" or "A0063414"
+    /\s+A\s+\d{4}[.,]\d{3,4}\b/g,
+    /\s+A\d{7,10}\b/g,
+]
+
+/**
+ * Removes CREA/CAU stamp text that got mixed into an item description.
+ * Returns the cleaned description and a flag indicating if stamp text was found
+ * (used to infer a missing unit — the stamp likely covered the unit column).
+ */
+function cleanStampFromDescription(descricao: string): { descricao: string; hadStamp: boolean } {
+    let cleaned = descricao
+    let hadStamp = false
+    for (const pattern of STAMP_PATTERNS) {
+        const before = cleaned
+        cleaned = cleaned.replace(pattern, ' ').trim()
+        if (cleaned !== before) hadStamp = true
+    }
+    return { descricao: cleaned.replace(/\s{2,}/g, ' ').trim(), hadStamp }
+}
+
+/**
+ * Cleans a unit string extracted by the LLM.
+ * Only strips a leading number when followed by at least one space before the unit text.
+ * e.g. "33 M2" → "M2", "100 UN" → "UN", "1.5 KG" → "KG"
+ * Leaves "UN", "M2", "KG", "3/4" etc. unchanged.
+ */
+function cleanUnit(unit: string | null): string | null {
+    if (!unit) return null
+    const trimmed = unit.trim()
+    if (!trimmed) return null
+    // Strip leading number ONLY when there is explicit whitespace before the unit letters
+    const cleaned = trimmed.replace(/^\d[\d.,]*\s+(?=[A-Za-z])/, '').trim()
+    // If what remains is purely numeric, the whole value was a stray number → discard
+    if (/^\d+([.,]\d+)?$/.test(cleaned)) return null
+    return cleaned || null
 }
 
 const FORM_PARSER_CONFIGURED =
@@ -178,6 +229,9 @@ async function processCatExtraction(
                       }
 
                 const response = await callLlm(llmPayload)
+                if (response.finishReason === 'MAX_TOKENS') {
+                    console.warn(`[cat-extraction] chunk ${i} (pages ${pageRange}) hit MAX_TOKENS — response truncated. Reduce CHUNK_SIZE if items are missing.`)
+                }
                 parsedMeta = parseCatExtractionXml(response.text)
                 allItems.push(...parsedMeta.itens)
                 totalInputTokens += response.usage.input_tokens
@@ -205,6 +259,9 @@ async function processCatExtraction(
                       }
 
                 const response = await callLlm(llmPayload)
+                if (response.finishReason === 'MAX_TOKENS') {
+                    console.warn(`[cat-extraction] chunk ${i} (pages ${pageRange}) hit MAX_TOKENS — some items may be missing. Reduce CHUNK_SIZE.`)
+                }
                 const chunkItems = parseCatItemsOnlyXml(response.text)
                 allItems.push(...chunkItems)
                 totalInputTokens += response.usage.input_tokens
@@ -216,9 +273,24 @@ async function processCatExtraction(
             throw new Error('Failed to extract CAT metadata from first chunk')
         }
 
-        const filteredItems = allItems.filter(
-            item => item.quantidade !== null && !isNaN(item.quantidade) && item.quantidade > 0,
-        )
+        // Clean stamp/seal text from descriptions, then keep only items with quantity > 0.
+        const filteredItems = allItems
+            .map(item => {
+                const { descricao: cleanedDesc, hadStamp } = cleanStampFromDescription(item.descricao)
+                return {
+                    ...item,
+                    descricao: cleanedDesc,
+                    // If the stamp covered the unit column and LLM returned no unit, default to UN
+                    unidade: item.unidade ? item.unidade : (hadStamp ? 'UN' : null),
+                }
+            })
+            .filter(
+                item =>
+                    item.descricao.length > 0 &&
+                    item.quantidade !== null &&
+                    !isNaN(item.quantidade) &&
+                    item.quantidade > 0,
+            )
 
         await db
             .update(cats)
@@ -236,6 +308,9 @@ async function processCatExtraction(
             })
             .where(eq(cats.id, catId))
 
+        // Delete any previously inserted items (idempotent retry support)
+        await db.delete(catItens).where(eq(catItens.catId, catId))
+
         if (filteredItems.length > 0) {
             const insertedItens = await db
                 .insert(catItens)
@@ -243,9 +318,9 @@ async function processCatExtraction(
                     filteredItems.map((item, idx) => ({
                         tenantId,
                         catId,
-                        numeroItem: item.numeroItem,
+                        numeroItem: idx + 1,           // always sequential, ignoring LLM-provided number
                         descricao: item.descricao,
-                        unidade: item.unidade,
+                        unidade: cleanUnit(item.unidade),
                         quantidade: item.quantidade!.toFixed(4),
                         origem: 'ai_extracted' as const,
                         aiConfidenceScore: parsedMeta!.aiConfidenceScore,

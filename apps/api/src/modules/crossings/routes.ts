@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { requireAuth, requireRole } from '../../middleware/auth.js'
 import { NotFoundError, ValidationError } from '@licitacat/shared/errors'
 import { db } from '@licitacat/db'
-import { crossings, crossingItems, editalRequisitos, editais, processingJobs } from '@licitacat/db/schema'
+import { crossings, crossingItems, crossingItemCats, reqParcelasRelevancia, editais, processingJobs, cats } from '@licitacat/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
 import { crossingQueue } from '@licitacat/queue/queues'
 
@@ -13,13 +13,6 @@ const RESULTADO_LABELS: Record<string, string> = {
   gap: 'Gap',
 }
 
-const CATEGORIA_LABELS: Record<string, string> = {
-  qualificacao_tecnica: 'Qualificação Técnica',
-  qualificacao_economica: 'Qualificação Econômica',
-  regularidade_fiscal: 'Regularidade Fiscal',
-  habilitacao_juridica: 'Habilitação Jurídica',
-  outro: 'Outro',
-}
 
 const RECOMENDACAO_LABELS: Record<string, string> = {
   participar: 'Participar',
@@ -53,8 +46,25 @@ export async function crossingsRoutes(app: FastifyInstance) {
   // GET /api/crossings
   app.get('/', async (request) => {
     const rows = await db
-      .select()
+      .select({
+        id: crossings.id,
+        editalId: crossings.editalId,
+        status: crossings.status,
+        scoreAderencia: crossings.scoreAderencia,
+        totalRequisitos: crossings.totalRequisitos,
+        requisitosAtendidos: crossings.requisitosAtendidos,
+        requisitosComRessalva: crossings.requisitosComRessalva,
+        requisitosGap: crossings.requisitosGap,
+        recomendacao: crossings.recomendacao,
+        aiCostUsd: crossings.aiCostUsd,
+        processingTimeSeconds: crossings.processingTimeSeconds,
+        createdAt: crossings.createdAt,
+        editalNumero: editais.numeroEdital,
+        editalFileName: editais.fileName,
+        editalOrgao: editais.orgaoLicitante,
+      })
       .from(crossings)
+      .innerJoin(editais, eq(crossings.editalId, editais.id))
       .where(eq(crossings.tenantId, request.tenantId))
       .orderBy(desc(crossings.createdAt))
       .limit(50)
@@ -124,15 +134,64 @@ export async function crossingsRoutes(app: FastifyInstance) {
   app.get('/:crossingId/items', async (request) => {
     const { crossingId } = CrossingParamsSchema.parse(request.params)
 
-    return db
-      .select()
+    const items = await db
+      .select({
+        id: crossingItems.id,
+        resultado: crossingItems.resultado,
+        aiJustificativa: crossingItems.aiJustificativa,
+        scoreSimilaridadeMax: crossingItems.scoreSimilaridadeMax,
+        humanOverride: crossingItems.humanOverride,
+        humanOverrideNote: crossingItems.humanOverrideNote,
+        parcelaServico: reqParcelasRelevancia.servico,
+        parcelaUnidade: reqParcelasRelevancia.unidade,
+        parcelaQuantidadeMinima: reqParcelasRelevancia.quantidadeMinima,
+      })
       .from(crossingItems)
+      .innerJoin(reqParcelasRelevancia, eq(crossingItems.requisitoId, reqParcelasRelevancia.id))
       .where(
         and(
           eq(crossingItems.crossingId, crossingId),
           eq(crossingItems.tenantId, request.tenantId),
         ),
       )
+      .orderBy(crossingItems.createdAt)
+
+    const catMatchRows = await db
+      .select({
+        crossingItemId: crossingItemCats.crossingItemId,
+        catId: crossingItemCats.catId,
+        catItemId: crossingItemCats.catItemId,
+        nivelMatch: crossingItemCats.nivelMatch,
+        scoreSimilaridade: crossingItemCats.scoreSimilaridade,
+        avaliacaoLlm: crossingItemCats.avaliacaoLlm,
+        justificativaLlm: crossingItemCats.justificativaLlm,
+        rankPosicao: crossingItemCats.rankPosicao,
+        catEmpresaContratante: cats.empresaContratante,
+        catTipoObra: cats.tipoObraServico,
+        catNumeroCat: cats.numeroCat,
+      })
+      .from(crossingItemCats)
+      .innerJoin(crossingItems, eq(crossingItemCats.crossingItemId, crossingItems.id))
+      .innerJoin(cats, eq(crossingItemCats.catId, cats.id))
+      .where(
+        and(
+          eq(crossingItems.crossingId, crossingId),
+          eq(crossingItems.tenantId, request.tenantId),
+        ),
+      )
+      .orderBy(crossingItemCats.rankPosicao)
+
+    const catMatchMap = new Map<string, typeof catMatchRows>()
+    for (const match of catMatchRows) {
+      const arr = catMatchMap.get(match.crossingItemId) ?? []
+      arr.push(match)
+      catMatchMap.set(match.crossingItemId, arr)
+    }
+
+    return items.map((item) => ({
+      ...item,
+      catMatches: catMatchMap.get(item.id) ?? [],
+    }))
   })
 
   // GET /api/crossings/:crossingId/export/csv
@@ -163,21 +222,19 @@ export async function crossingsRoutes(app: FastifyInstance) {
         scoreSimilaridadeMax: crossingItems.scoreSimilaridadeMax,
         humanOverride: crossingItems.humanOverride,
         humanOverrideNote: crossingItems.humanOverrideNote,
-        requisitoDescricao: editalRequisitos.descricao,
-        requisitoCategoria: editalRequisitos.categoria,
-        quantitativoExigido: editalRequisitos.quantitativoExigido,
-        unidade: editalRequisitos.unidade,
-        lote: editalRequisitos.lote,
+        parcelaServico: reqParcelasRelevancia.servico,
+        quantidadeMinima: reqParcelasRelevancia.quantidadeMinima,
+        unidade: reqParcelasRelevancia.unidade,
       })
       .from(crossingItems)
-      .innerJoin(editalRequisitos, eq(crossingItems.requisitoId, editalRequisitos.id))
+      .innerJoin(reqParcelasRelevancia, eq(crossingItems.requisitoId, reqParcelasRelevancia.id))
       .where(
         and(
           eq(crossingItems.crossingId, crossingId),
           eq(crossingItems.tenantId, request.tenantId),
         ),
       )
-      .orderBy(editalRequisitos.categoria, editalRequisitos.createdAt)
+      .orderBy(crossingItems.createdAt)
 
     const reportDate = new Date().toLocaleDateString('pt-BR')
     const orgao = edital?.orgaoLicitante ?? ''
@@ -200,10 +257,8 @@ export async function crossingsRoutes(app: FastifyInstance) {
     ]
 
     const header = [
-      'Lote',
-      'Categoria',
-      'Requisito',
-      'Quantitativo',
+      'Serviço / Parcela de Relevância',
+      'Quantidade Mínima',
       'Unidade',
       'Resultado',
       'Score Similaridade (%)',
@@ -214,10 +269,8 @@ export async function crossingsRoutes(app: FastifyInstance) {
 
     const dataRows = items.map((item) =>
       [
-        escapeCSV(item.lote),
-        escapeCSV(item.requisitoCategoria ? (CATEGORIA_LABELS[item.requisitoCategoria] ?? item.requisitoCategoria) : ''),
-        escapeCSV(item.requisitoDescricao),
-        escapeCSV(item.quantitativoExigido),
+        escapeCSV(item.parcelaServico),
+        escapeCSV(item.quantidadeMinima),
         escapeCSV(item.unidade),
         escapeCSV(RESULTADO_LABELS[item.resultado] ?? item.resultado),
         escapeCSV(

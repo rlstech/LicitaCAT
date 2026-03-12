@@ -31,6 +31,7 @@ export const UpdateRequisitoSchema = z.object({
   descricao: z.string().min(1).max(2000).optional(),
   quantitativoExigido: z.number().positive().optional(),
   unidade: z.string().min(1).max(50).optional(),
+  referenciaAnexo: z.string().max(100).optional(),
   status: z
     .enum(['human_approved', 'human_edited', 'human_rejected'])
     .optional(),

@@ -5,7 +5,7 @@ import {
     crossingItems,
     crossingItemCats,
     processingJobs,
-    editalRequisitos,
+    reqParcelasRelevancia,
     cats,
     catItens,
     editais,
@@ -130,15 +130,14 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
         let gaps = 0
         const gapDescriptions: string[] = []
 
-        // Fetch all approved requisitos for this edital
+        // Fetch parcelas de relevância — these are the technical requirements crossed with CATs
         const requisitos = await db
             .select()
-            .from(editalRequisitos)
+            .from(reqParcelasRelevancia)
             .where(
                 and(
-                    eq(editalRequisitos.tenantId, tenantId),
-                    eq(editalRequisitos.editalId, editalId),
-                    sql`${editalRequisitos.status} IN ('ai_extracted', 'human_approved', 'human_edited')`,
+                    eq(reqParcelasRelevancia.tenantId, tenantId),
+                    eq(reqParcelasRelevancia.editalId, editalId),
                 ),
             )
 
@@ -149,8 +148,8 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
 
         // Process each requisito
         for (const requisito of requisitos) {
-            // 1. Find semantic candidates
-            const candidates = await findSemanticCandidates(tenantId, requisito.descricao)
+            // 1. Find semantic candidates using parcela.servico
+            const candidates = await findSemanticCandidates(tenantId, requisito.servico)
 
             let resultado: 'atendido' | 'atendido_parcialmente' | 'gap' = 'gap'
             let justificativa = 'Nenhuma CAT candidata encontrada para este requisito.'
@@ -169,8 +168,8 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
                 // 2. Ask LLM to evaluate
                 const userPrompt = buildCrossingItemPrompt(
                     {
-                        descricao: requisito.descricao,
-                        quantitativoExigido: requisito.quantitativoExigido ? parseFloat(requisito.quantitativoExigido) : null,
+                        descricao: requisito.servico,
+                        quantitativoExigido: requisito.quantidadeMinima ? parseFloat(requisito.quantidadeMinima) : null,
                         unidade: requisito.unidade,
                     },
                     candidates,
@@ -249,7 +248,7 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
             else if (resultado === 'atendido_parcialmente') parciais++
             else {
                 gaps++
-                gapDescriptions.push(requisito.descricao.slice(0, 200))
+                gapDescriptions.push(requisito.servico.slice(0, 200))
             }
         }
 

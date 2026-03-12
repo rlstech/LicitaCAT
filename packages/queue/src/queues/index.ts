@@ -8,19 +8,11 @@ const connection = {
 }
 
 // Job data types
-export interface OcrJobData {
-  tenantId: string
-  editalId: string
-  jobId: string
-  fileUrl: string
-}
-
 export interface EditalExtractionJobData {
   tenantId: string
   editalId: string
   jobId: string
-  ocrText: string
-  pageCount: number
+  fileUrl: string
 }
 
 export interface CatExtractionJobData {
@@ -40,36 +32,39 @@ export interface CrossingJobData {
 
 export interface EmbeddingGenJobData {
   tenantId: string
-  entityType: 'edital_requisito' | 'cat' | 'cat_item'
+  entityType: 'edital_requisito' | 'cat' | 'cat_item' | 'parcela_relevancia'
   entityId: string
   text: string
   jobId: string
 }
 
-// Queue definitions
-export const ocrQueue = new Queue<OcrJobData>('ocr', { connection })
+const retryJobOptions = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 10000 },
+}
 
+// Queue definitions
 export const editalExtractionQueue = new Queue<EditalExtractionJobData>(
   'edital_extraction',
-  { connection },
+  { connection, defaultJobOptions: retryJobOptions },
 )
 
 export const catExtractionQueue = new Queue<CatExtractionJobData>(
   'cat_extraction',
-  { connection },
+  { connection, defaultJobOptions: retryJobOptions },
 )
 
 export const crossingQueue = new Queue<CrossingJobData>('crossing', {
   connection,
+  defaultJobOptions: retryJobOptions,
 })
 
 export const embeddingGenQueue = new Queue<EmbeddingGenJobData>(
   'embedding_gen',
-  { connection },
+  { connection, defaultJobOptions: retryJobOptions },
 )
 
 export const allQueues = [
-  ocrQueue,
   editalExtractionQueue,
   catExtractionQueue,
   crossingQueue,

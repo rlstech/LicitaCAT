@@ -1,16 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
-
 const apiKey = process.env['GEMINI_API_KEY']
 if (!apiKey) {
   throw new Error('GEMINI_API_KEY environment variable is required')
 }
 
-const genAI = new GoogleGenerativeAI(apiKey)
-const EMBEDDING_MODEL = 'text-embedding-004'
+const EMBEDDING_MODEL = 'gemini-embedding-001'
 const EMBEDDING_DIMENSIONS = 768
-
-// Gemini embedding pricing: ~$0.00 (free tier) or very low cost
-const COST_PER_MILLION_TOKENS = 0.000
+const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`
 
 export interface EmbeddingResult {
   embedding: number[]
@@ -28,15 +23,27 @@ export async function generateEmbedding(
   text: string,
   inputType: 'document' | 'query' = 'document',
 ): Promise<EmbeddingResult> {
-  const model = genAI.getGenerativeModel({ model: EMBEDDING_MODEL })
   const taskType = inputType === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT'
 
-  const result = await model.embedContent({
-    content: { parts: [{ text }], role: 'user' },
-    taskType: taskType as Parameters<typeof model.embedContent>[0]['taskType'],
+  const response = await fetch(EMBED_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: `models/${EMBEDDING_MODEL}`,
+      content: { parts: [{ text }] },
+      taskType,
+      outputDimensionality: EMBEDDING_DIMENSIONS,
+    }),
   })
 
-  const embedding = result.embedding.values
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Gemini embedding API error ${response.status}: ${errorText}`)
+  }
+
+  const data = await response.json() as { embedding: { values: number[] } }
+  const embedding = data.embedding.values
+
   if (!embedding || embedding.length !== EMBEDDING_DIMENSIONS) {
     throw new Error(`Invalid embedding dimensions: expected ${EMBEDDING_DIMENSIONS}, got ${embedding?.length}`)
   }
@@ -58,7 +65,7 @@ export async function generateBatchEmbeddings(
     embeddings.push(result.embedding)
   }
 
-  return { embeddings, tokensUsed: 0, costUsd: COST_PER_MILLION_TOKENS }
+  return { embeddings, tokensUsed: 0, costUsd: 0 }
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

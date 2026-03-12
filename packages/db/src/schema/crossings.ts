@@ -10,8 +10,9 @@ import {
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { tenants, users } from './tenants.js'
-import { editais, editalRequisitos } from './editais.js'
+import { editais } from './editais.js'
 import { cats, catItens } from './cats.js'
+import { reqParcelasRelevancia } from './edital-habilitacao.js'
 
 export const crossingStatusEnum = pgEnum('crossing_status', [
   'queued',
@@ -77,7 +78,7 @@ export const crossingItems = pgTable('crossing_items', {
     .references(() => crossings.id, { onDelete: 'cascade' }),
   requisitoId: text('requisito_id')
     .notNull()
-    .references(() => editalRequisitos.id),
+    .references(() => reqParcelasRelevancia.id),
   resultado: crossingItemResultadoEnum('resultado').notNull(),
   aiJustificativa: text('ai_justificativa'),
   scoreSimilaridadeMax: numeric('score_similaridade_max', { precision: 5, scale: 4 }),

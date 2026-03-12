@@ -1,5 +1,4 @@
 import {
-    createOcrWorker,
     createEditalExtractionWorker,
     createCatExtractionWorker,
     createCrossingWorker,
@@ -8,13 +7,12 @@ import {
 
 console.log('🚀 Starting LicitaCAT workers...')
 
-const ocrWorker = createOcrWorker()
 const editalExtractionWorker = createEditalExtractionWorker()
 const catExtractionWorker = createCatExtractionWorker()
 const crossingWorker = createCrossingWorker()
 const embeddingGenWorker = createEmbeddingGenWorker()
 
-const workers = [ocrWorker, editalExtractionWorker, catExtractionWorker, crossingWorker, embeddingGenWorker]
+const workers = [editalExtractionWorker, catExtractionWorker, crossingWorker, embeddingGenWorker]
 
 // Logging
 for (const worker of workers) {

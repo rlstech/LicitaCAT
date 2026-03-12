@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { Readable } from 'node:stream'
 
 const BUCKET = process.env['S3_BUCKET']
 const REGION = process.env['S3_REGION'] ?? 'us-east-1'
@@ -69,6 +70,25 @@ export async function generatePresignedDownloadUrl(key: string): Promise<string>
   return getSignedUrl(client, command, {
     expiresIn: PRESIGNED_URL_EXPIRES_SECONDS,
   })
+}
+
+export async function downloadFromS3(fileUrl: string): Promise<Buffer> {
+  // fileUrl format: s3://bucket/key
+  const withoutScheme = fileUrl.replace(/^s3:\/\//, '')
+  const slashIdx = withoutScheme.indexOf('/')
+  const bucket = withoutScheme.slice(0, slashIdx)
+  const key = withoutScheme.slice(slashIdx + 1)
+
+  const client = getS3Client()
+  const command = new GetObjectCommand({ Bucket: bucket, Key: key })
+  const response = await client.send(command)
+
+  const stream = response.Body as Readable
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array))
+  }
+  return Buffer.concat(chunks)
 }
 
 export async function generatePresignedUploadUrl(

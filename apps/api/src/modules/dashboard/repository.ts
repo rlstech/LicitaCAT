@@ -1,6 +1,6 @@
 import { db } from '@licitacat/db'
 import { editais, cats, crossings, processingJobs } from '@licitacat/db/schema'
-import { eq, and, gte, count, avg, desc, sql } from 'drizzle-orm'
+import { eq, and, gte, count, avg, desc, sql, inArray } from 'drizzle-orm'
 
 export async function getDashboardStats(tenantId: string) {
   const startOfMonth = new Date()
@@ -36,7 +36,12 @@ export async function getDashboardStats(tenantId: string) {
     db
       .select()
       .from(processingJobs)
-      .where(eq(processingJobs.tenantId, tenantId))
+      .where(
+        and(
+          eq(processingJobs.tenantId, tenantId),
+          inArray(processingJobs.jobType, ['ocr', 'edital_extraction', 'cat_extraction', 'crossing']),
+        ),
+      )
       .orderBy(desc(processingJobs.createdAt))
       .limit(10),
   ])

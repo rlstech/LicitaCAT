@@ -1,6 +1,6 @@
 import { Worker, type Job } from 'bullmq'
 import { db } from '@licitacat/db'
-import { editalRequisitos, cats, catItens, processingJobs } from '@licitacat/db/schema'
+import { processingJobs } from '@licitacat/db/schema'
 import { generateEmbedding } from '@licitacat/ai/embeddings'
 import { sql, eq } from 'drizzle-orm'
 import type { EmbeddingGenJobData } from '../queues/index.js'
@@ -23,23 +23,26 @@ async function processEmbeddingGen(job: Job<EmbeddingGenJobData>): Promise<void>
 
   try {
     const { embedding, costUsd } = await generateEmbedding(text, 'document')
-    const embeddingVector = `[${embedding.join(',')}]`
+    // The embedding column is added via raw SQL migration and is not in the Drizzle schema,
+    // so we must use db.execute() with a raw SQL query to update it.
+    const embeddingLiteral = `[${embedding.join(',')}]`
 
     if (entityType === 'edital_requisito') {
-      await db
-        .update(editalRequisitos)
-        .set({ embedding: sql`${embeddingVector}::vector` })
-        .where(eq(editalRequisitos.id, entityId))
+      await db.execute(
+        sql`UPDATE edital_requisitos SET embedding = ${embeddingLiteral}::vector WHERE id = ${entityId}`,
+      )
     } else if (entityType === 'cat') {
-      await db
-        .update(cats)
-        .set({ embedding: sql`${embeddingVector}::vector` })
-        .where(eq(cats.id, entityId))
+      await db.execute(
+        sql`UPDATE cats SET embedding = ${embeddingLiteral}::vector WHERE id = ${entityId}`,
+      )
     } else if (entityType === 'cat_item') {
-      await db
-        .update(catItens)
-        .set({ embedding: sql`${embeddingVector}::vector` })
-        .where(eq(catItens.id, entityId))
+      await db.execute(
+        sql`UPDATE cat_itens SET embedding = ${embeddingLiteral}::vector WHERE id = ${entityId}`,
+      )
+    } else if (entityType === 'parcela_relevancia') {
+      await db.execute(
+        sql`UPDATE req_parcelas_relevancia SET embedding = ${embeddingLiteral}::vector WHERE id = ${entityId}`,
+      )
     }
 
     await db

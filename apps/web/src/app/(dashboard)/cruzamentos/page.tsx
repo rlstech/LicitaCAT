@@ -18,6 +18,9 @@ interface Crossing {
   recomendacao: string | null
   processingTimeSeconds: number | null
   createdAt: string
+  editalNumero: string | null
+  editalFileName: string
+  editalOrgao: string | null
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -100,13 +103,19 @@ export default function CruzamentosPage() {
                   )}
 
                   <div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {c.editalNumero ?? c.editalFileName}
+                    </div>
+                    {c.editalOrgao && (
+                      <div className="text-xs text-gray-500 mb-1">{c.editalOrgao}</div>
+                    )}
                     <div className="flex items-center gap-2">
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo.color}`}>{statusInfo.label}</span>
                       {recInfo && (
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${recInfo.color}`}>{recInfo.icon} {recInfo.label}</span>
                       )}
                     </div>
-                    <p className="mt-1 text-sm text-gray-500">
+                    <p className="mt-1 text-xs text-gray-400">
                       {new Date(c.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       {c.processingTimeSeconds ? ` · ${c.processingTimeSeconds}s` : ''}
                     </p>

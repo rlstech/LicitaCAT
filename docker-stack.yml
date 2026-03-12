@@ -67,7 +67,10 @@ services:
         - "traefik.http.routers.licitacat-api.entrypoints=websecure"
         - "traefik.http.routers.licitacat-api.tls=true"
         - "traefik.http.routers.licitacat-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.licitacat-api.middlewares=api-buffering@swarm"
         - "traefik.http.services.licitacat-api.loadbalancer.server.port=3001"
+        - "traefik.http.middlewares.api-buffering.buffering.maxRequestBodyBytes=52428800"
+        - "traefik.http.middlewares.api-buffering.buffering.maxResponseBodyBytes=0"
 
   # ── BullMQ Worker ──────────────────────────────────────────────
   worker:

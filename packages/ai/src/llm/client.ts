@@ -8,11 +8,11 @@ if (!apiKey) {
 
 const genAI = new GoogleGenerativeAI(apiKey)
 
-export const DEFAULT_MODEL = 'gemini-2.0-flash' as const
+export const DEFAULT_MODEL = 'gemini-3-flash-preview' as const
 
 // Pricing per million tokens (USD)
 const PRICING = {
-  'gemini-2.0-flash': { input: 0.075, output: 0.30 },
+  'gemini-3-flash-preview': { input: 0.50, output: 3.00 },
 } as const
 
 export function calculateCostUsd(
@@ -34,6 +34,8 @@ export interface LlmUsage {
 
 export interface LlmResponse {
   text: string
+  /** 'STOP' = normal, 'MAX_TOKENS' = response was cut at the token limit */
+  finishReason: string
   usage: {
     input_tokens: number
     output_tokens: number
@@ -73,8 +75,12 @@ export async function callLlm(options: {
     },
   })
 
+  const candidate = result.response.candidates?.[0]
+  const finishReason = candidate?.finishReason ?? 'STOP'
+
   return {
     text: result.response.text(),
+    finishReason: String(finishReason),
     usage: {
       input_tokens: result.response.usageMetadata?.promptTokenCount ?? 0,
       output_tokens: result.response.usageMetadata?.candidatesTokenCount ?? 0,

@@ -12,6 +12,7 @@ interface Cat {
   numeroCat: string | null
   empresaContratante: string | null
   tipoObraServico: string | null
+  descricaoTecnica: string | null
   statusExtracao: string
   profissionalId: string
   createdAt: string
@@ -22,6 +23,13 @@ interface CatsResponse {
   total: number
   page: number
   limit: number
+}
+
+interface EditForm {
+  numeroCat: string
+  empresaContratante: string
+  tipoObraServico: string
+  descricaoTecnica: string
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -40,6 +48,11 @@ export default function CatsPage() {
   const [page, setPage] = useState(1)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  // Edit modal state
+  const [editingCat, setEditingCat] = useState<Cat | null>(null)
+  const [editForm, setEditForm] = useState<EditForm>({ numeroCat: '', empresaContratante: '', tipoObraServico: '', descricaoTecnica: '' })
+  const [saving, setSaving] = useState(false)
 
   const fetchCats = useCallback(async () => {
     try {
@@ -79,11 +92,47 @@ export default function CatsPage() {
     }
   }
 
+  function openEdit(cat: Cat) {
+    setEditingCat(cat)
+    setEditForm({
+      numeroCat: cat.numeroCat ?? '',
+      empresaContratante: cat.empresaContratante ?? '',
+      tipoObraServico: cat.tipoObraServico ?? '',
+      descricaoTecnica: cat.descricaoTecnica ?? '',
+    })
+  }
+
+  async function handleSaveEdit() {
+    if (!editingCat) return
+    setSaving(true)
+    try {
+      const token = await getToken()
+      const body: Record<string, string> = {}
+      if (editForm.numeroCat.trim()) body.numeroCat = editForm.numeroCat.trim()
+      if (editForm.empresaContratante.trim()) body.empresaContratante = editForm.empresaContratante.trim()
+      if (editForm.tipoObraServico.trim()) body.tipoObraServico = editForm.tipoObraServico.trim()
+      if (editForm.descricaoTecnica.trim()) body.descricaoTecnica = editForm.descricaoTecnica.trim()
+
+      const res = await fetch(`${API_URL}/api/cats/${editingCat.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const updated = await res.json() as Cat
+        setCats((prev) => prev.map((c) => c.id === editingCat.id ? { ...c, ...updated } : c))
+        setEditingCat(null)
+      }
+    } catch { /* silent */ } finally {
+      setSaving(false)
+    }
+  }
+
   const confirmCat = cats.find((c) => c.id === confirmDeleteId)
 
   return (
     <div>
-      {/* Modal de confirmação */}
+      {/* Modal de confirmação de exclusão */}
       {confirmDeleteId && confirmCat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
@@ -93,22 +142,71 @@ export default function CatsPage() {
               Esta ação é irreversível e removerá todos os itens associados.
             </p>
             <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => setConfirmDeleteId(null)}
-                disabled={deletingId === confirmDeleteId}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => handleDelete(confirmDeleteId)}
-                disabled={deletingId === confirmDeleteId}
-                className="inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                {deletingId === confirmDeleteId && (
-                  <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                )}
+              <button onClick={() => setConfirmDeleteId(null)} disabled={deletingId === confirmDeleteId} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
+              <button onClick={() => handleDelete(confirmDeleteId)} disabled={deletingId === confirmDeleteId} className="inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                {deletingId === confirmDeleteId && <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
                 Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de edição do resumo da CAT */}
+      {editingCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-lg bg-white shadow-xl">
+            <div className="border-b px-6 py-4">
+              <h3 className="text-lg font-semibold text-gray-900">Editar resumo da CAT</h3>
+              <p className="mt-0.5 text-sm text-gray-500">{editingCat.fileName}</p>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Número da CAT</label>
+                <input
+                  type="text"
+                  value={editForm.numeroCat}
+                  onChange={(e) => setEditForm((f) => ({ ...f, numeroCat: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  placeholder="ex: 059278/2009"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Empresa contratante</label>
+                <input
+                  type="text"
+                  value={editForm.empresaContratante}
+                  onChange={(e) => setEditForm((f) => ({ ...f, empresaContratante: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  placeholder="ex: SECRETARIA DE SEGURANÇA PÚBLICA"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Tipo de obra/serviço</label>
+                <input
+                  type="text"
+                  value={editForm.tipoObraServico}
+                  onChange={(e) => setEditForm((f) => ({ ...f, tipoObraServico: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  placeholder="ex: Construção, Reforma, Instalação elétrica"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Descrição técnica</label>
+                <textarea
+                  value={editForm.descricaoTecnica}
+                  onChange={(e) => setEditForm((f) => ({ ...f, descricaoTecnica: e.target.value }))}
+                  rows={4}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  placeholder="Descrição técnica detalhada da obra ou serviço..."
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t px-6 py-4">
+              <button onClick={() => setEditingCat(null)} disabled={saving} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
+              <button onClick={handleSaveEdit} disabled={saving} className="inline-flex items-center rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+                {saving && <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
+                Salvar
               </button>
             </div>
           </div>
@@ -121,12 +219,8 @@ export default function CatsPage() {
           <p className="mt-1 text-gray-600">Certidões de Acervo Técnico da empresa</p>
         </div>
         <div className="flex gap-2">
-          <Link href="/cats/profissionais" className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-            Profissionais
-          </Link>
-          <Link href="/cats/upload" className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors">
-            + Nova CAT
-          </Link>
+          <Link href="/cats/profissionais" className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">Profissionais</Link>
+          <Link href="/cats/upload" className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors">+ Nova CAT</Link>
         </div>
       </div>
 
@@ -148,10 +242,7 @@ export default function CatsPage() {
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
                     <div className="flex items-center justify-center gap-2">
-                      <svg className="h-5 w-5 animate-spin text-brand-600" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
+                      <svg className="h-5 w-5 animate-spin text-brand-600" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                       Carregando...
                     </div>
                   </td>
@@ -162,19 +253,16 @@ export default function CatsPage() {
                 const statusInfo = STATUS_CONFIG[cat.statusExtracao] ?? { label: cat.statusExtracao, color: 'bg-gray-100 text-gray-700' }
                 return (
                   <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="whitespace-nowrap px-6 py-4">
+                    <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{cat.numeroCat ?? cat.fileName}</div>
-                      {cat.numeroCat && <div className="text-xs text-gray-500">{cat.fileName}</div>}
+                      {cat.numeroCat && <div className="text-xs text-gray-500 truncate max-w-xs">{cat.fileName}</div>}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">{cat.empresaContratante ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700 max-w-[220px] truncate">{cat.empresaContratante ?? '—'}</td>
                     <td className="max-w-[200px] truncate px-6 py-4 text-sm text-gray-700">{cat.tipoObraServico ?? '—'}</td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo.color}`}>
                         {cat.statusExtracao === 'processing' && (
-                          <svg className="mr-1.5 h-3 w-3 animate-spin" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                          </svg>
+                          <svg className="mr-1.5 h-3 w-3 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                         )}
                         {statusInfo.label}
                       </span>
@@ -188,8 +276,17 @@ export default function CatsPage() {
                           Ver detalhes
                         </Link>
                         <button
+                          onClick={() => openEdit(cat)}
+                          className="text-gray-400 hover:text-gray-700"
+                          title="Editar resumo"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+                          </svg>
+                        </button>
+                        <button
                           onClick={() => setConfirmDeleteId(cat.id)}
-                          className="text-red-600 hover:text-red-800"
+                          className="text-red-400 hover:text-red-600"
                           title="Excluir CAT"
                         >
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">

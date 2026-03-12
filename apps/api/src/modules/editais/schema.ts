@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { UpdateEditalSchema, UpdateRequisitoSchema } from '@licitacat/shared/schemas'
+import { UpdateEditalSchema } from '@licitacat/shared/schemas'
 
 export const ListEditaisQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -13,9 +13,4 @@ export const EditalParamsSchema = z.object({
   editalId: z.string().uuid(),
 })
 
-export const RequisitoParamsSchema = z.object({
-  editalId: z.string().uuid(),
-  requisitoId: z.string().uuid(),
-})
-
-export { UpdateEditalSchema, UpdateRequisitoSchema }
+export { UpdateEditalSchema }

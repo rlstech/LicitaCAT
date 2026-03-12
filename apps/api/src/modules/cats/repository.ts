@@ -86,9 +86,14 @@ export async function updateCat(
   catId: string,
   data: UpdateCatInput,
 ) {
+  const { quantitativoValor, ...rest } = data
   const [updated] = await db
     .update(cats)
-    .set({ ...data, updatedAt: new Date() })
+    .set({
+      ...rest,
+      ...(quantitativoValor !== undefined ? { quantitativoValor: quantitativoValor.toFixed(4) } : {}),
+      updatedAt: new Date(),
+    })
     .where(and(eq(cats.id, catId), eq(cats.tenantId, tenantId)))
     .returning()
   return updated
@@ -124,9 +129,16 @@ export async function createCatItem(
   catId: string,
   data: CreateCatItemInput,
 ) {
+  const { quantidade, ...rest } = data
   const [created] = await db
     .insert(catItens)
-    .values({ tenantId, catId, origem: 'human_added', ...data })
+    .values({
+      tenantId,
+      catId,
+      origem: 'human_added',
+      ...rest,
+      ...(quantidade !== undefined ? { quantidade: quantidade.toFixed(4) } : {}),
+    })
     .returning()
   return created
 }
@@ -136,9 +148,14 @@ export async function updateCatItem(
   itemId: string,
   data: UpdateCatItemInput,
 ) {
+  const { quantidade, ...rest } = data
   const [updated] = await db
     .update(catItens)
-    .set({ ...data, updatedAt: new Date() })
+    .set({
+      ...rest,
+      ...(quantidade !== undefined ? { quantidade: quantidade.toFixed(4) } : {}),
+      updatedAt: new Date(),
+    })
     .where(and(eq(catItens.id, itemId), eq(catItens.tenantId, tenantId)))
     .returning()
   return updated
