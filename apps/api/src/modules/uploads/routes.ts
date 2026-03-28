@@ -7,6 +7,19 @@ import { editais, cats, tenants, processingJobs } from '@licitacat/db/schema'
 import { eq, count, and, gte } from 'drizzle-orm'
 import { editalExtractionQueue, catExtractionQueue } from '@licitacat/queue/queues'
 import { randomUUID } from 'node:crypto'
+import { createRequire } from 'module'
+const _require = createRequire(import.meta.url)
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+const pdfParse = _require('pdf-parse') as (buffer: Buffer) => Promise<{ text: string }>
+
+async function detectPdfType(buffer: Buffer): Promise<'pdf_copyable' | 'pdf_scanned'> {
+  try {
+    const { text } = await pdfParse(buffer.slice(0, 200_000)) // sample first ~200KB
+    return text.trim().length > 100 ? 'pdf_copyable' : 'pdf_scanned'
+  } catch {
+    return 'pdf_scanned'
+  }
+}
 
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
@@ -107,7 +120,9 @@ export async function uploadsRoutes(app: FastifyInstance) {
 
       return reply.status(201).send({ editalId: edital.id, jobId: job.id })
     } else {
-      const fileType = mimeType === 'application/pdf' ? 'pdf_scanned' : 'excel'
+      const fileType = mimeType === 'application/pdf'
+        ? await detectPdfType(buffer)
+        : 'excel'
 
       const [cat] = await db
         .insert(cats)
@@ -148,6 +163,45 @@ export async function uploadsRoutes(app: FastifyInstance) {
 
       return reply.status(201).send({ catId: cat.id, jobId: job.id })
     }
+  })
+
+  // POST /api/uploads/reprocess-cat/:catId — re-enqueue extraction for a CAT in error state
+  app.post('/reprocess-cat/:catId', async (request, reply) => {
+    const { catId } = (request.params as { catId: string })
+
+    const cat = await db.query.cats.findFirst({
+      where: and(eq(cats.id, catId), eq(cats.tenantId, request.tenantId)),
+    })
+
+    if (!cat) throw new ValidationError('CAT não encontrada')
+    if (!['error', 'pending'].includes(cat.statusExtracao)) {
+      throw new ValidationError(`CAT com status "${cat.statusExtracao}" não pode ser reprocessada`)
+    }
+
+    await db.update(cats).set({ statusExtracao: 'pending' }).where(eq(cats.id, catId))
+
+    const [job] = await db
+      .insert(processingJobs)
+      .values({
+        tenantId: request.tenantId,
+        jobType: 'cat_extraction',
+        entityType: 'cat',
+        entityId: catId,
+        status: 'queued',
+      })
+      .returning()
+
+    if (!job) throw new Error('Failed to create job')
+
+    await catExtractionQueue.add('cat_extraction', {
+      tenantId: request.tenantId,
+      catId,
+      jobId: job.id,
+      fileUrl: cat.fileUrl,
+      fileType: cat.fileType as 'pdf_scanned' | 'pdf_copyable' | 'excel',
+    }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } })
+
+    return reply.status(202).send({ catId, jobId: job.id, status: 'queued' })
   })
 
   // POST /api/uploads/reprocess/:editalId — re-enqueue OCR for an edital in error/uploaded state

@@ -10,13 +10,32 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          900: '#1e3a8a',
+          50:  '#f0f9ff',
+          100: '#e6f6ff',
+          200: '#cfe6f2',
+          300: '#85c0d7',
+          400: '#4c626a',
+          500: '#004f63',
+          600: '#003746',
+          700: '#002a36',
+          800: '#001e27',
+          900: '#071e27',
+          950: '#031219',
         },
+        surface: {
+          DEFAULT: '#f3faff',
+          low: '#e6f6ff',
+          container: '#dbf1fe',
+          high: '#d5ecf8',
+          highest: '#cfe6f2',
+        },
+        outline: {
+          DEFAULT: '#70787c',
+          variant: '#c0c8cc',
+        },
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
     },
   },

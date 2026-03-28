@@ -9,6 +9,8 @@ import { catsRoutes } from './modules/cats/routes.js'
 import { crossingsRoutes } from './modules/crossings/routes.js'
 import { uploadsRoutes } from './modules/uploads/routes.js'
 import { dashboardRoutes } from './modules/dashboard/routes.js'
+import { usersRoutes } from './modules/users/routes.js'
+import { pncpCacheRoutes } from './modules/pncp-cache/routes.js'
 
 const PORT = parseInt(process.env['API_PORT'] ?? '3001', 10)
 const HOST = process.env['API_HOST'] ?? '0.0.0.0'
@@ -48,6 +50,8 @@ async function buildServer() {
   await app.register(crossingsRoutes, { prefix: '/api/crossings' })
   await app.register(uploadsRoutes, { prefix: '/api/uploads' })
   await app.register(dashboardRoutes, { prefix: '/api/dashboard' })
+  await app.register(usersRoutes, { prefix: '/api/users' })
+  await app.register(pncpCacheRoutes, { prefix: '/api/pncp-cache' })
 
   // Global error handler
   app.setErrorHandler((error, _request, reply) => {

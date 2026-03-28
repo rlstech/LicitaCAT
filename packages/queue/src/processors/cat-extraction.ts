@@ -1,6 +1,10 @@
 import { Worker, type Job } from 'bullmq'
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 import { PDFDocument } from 'pdf-lib'
+import { createRequire } from 'module'
+const _require = createRequire(import.meta.url)
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+const pdfParse = _require('pdf-parse') as (buffer: Buffer) => Promise<{ text: string; numpages: number }>
 import { db } from '@licitacat/db'
 import { cats, catItens, processingJobs } from '@licitacat/db/schema'
 import {
@@ -25,9 +29,10 @@ const S3_BUCKET = process.env['S3_BUCKET'] ?? ''
 const S3_REGION = process.env['S3_REGION'] ?? 'us-east-1'
 const S3_ENDPOINT = process.env['S3_ENDPOINT']
 
-// Pages per LLM call. Smaller = fewer items per call = less risk of hitting the
-// 8192-token output limit. Form Parser also supports up to 15 pages, so 5 is safe for both.
-const CHUNK_SIZE = 5
+// Pages per LLM call. Each chunk's output must fit in MAX_OUTPUT_TOKENS.
+// If a chunk hits MAX_TOKENS the processor splits it in half and retries (down to 1 page).
+const CHUNK_SIZE = 3
+const MAX_OUTPUT_TOKENS = 8192
 
 const connection = {
     host: new URL(REDIS_URL).hostname,
@@ -147,22 +152,112 @@ const FORM_PARSER_CONFIGURED =
 
 /**
  * Extracts text from a PDF chunk.
- * Uses Form Parser (Document AI) when configured — preserves tables and form fields.
- * Falls back to sending the raw PDF inline to the LLM when not configured.
+ * Priority:
+ *  1. Google Document AI Form Parser (best for scanned/complex tables)
+ *  2. Native pdf-parse (for copyable PDFs — free, fast, no external API)
+ *  3. Inline PDF to LLM (fallback for scanned PDFs without Document AI)
  */
 async function extractChunkText(
     chunkBuffer: Buffer,
     pageRange: string,
     totalPages: number,
-): Promise<{ text: string; docAiCostUsd: number }> {
+    fileType: string,
+): Promise<{ text: string; docAiCostUsd: number; hasText: boolean }> {
     if (FORM_PARSER_CONFIGURED) {
         const result = await processDocumentFormParser(chunkBuffer, 'application/pdf')
-        return { text: result.formattedText, docAiCostUsd: result.costUsd }
+        return { text: result.formattedText, docAiCostUsd: result.costUsd, hasText: true }
+    }
+    // Try native text extraction for any PDF — fast, free, no API needed
+    // Falls back to inline PDF if the document is scanned (no embedded text)
+    try {
+        const parsed = await pdfParse(chunkBuffer)
+        const text = parsed.text.trim()
+        if (text.length > 100) {
+            console.log(`[cat-extraction] pdf-parse extracted ${text.length} chars from pages ${pageRange} (type=${fileType})`)
+            return { text, docAiCostUsd: 0, hasText: true }
+        }
+        console.log(`[cat-extraction] pdf-parse yielded ${text.length} chars (likely scanned) — using inline PDF for pages ${pageRange}`)
+    } catch (e) {
+        console.warn(`[cat-extraction] pdf-parse failed for pages ${pageRange}, falling back to inline PDF:`, e)
     }
     // Fallback: return a placeholder so the LLM receives the PDF inline
     return {
         text: `[PDF anexado — páginas ${pageRange} de ${totalPages}]`,
         docAiCostUsd: 0,
+        hasText: false,
+    }
+}
+
+interface ChunkResult {
+    items: ReturnType<typeof parseCatItemsOnlyXml>
+    meta?: ReturnType<typeof parseCatExtractionXml>
+    inputTokens: number
+    outputTokens: number
+    docAiCostUsd: number
+}
+
+/**
+ * Processes a PDF page range, extracting CAT items (and optionally header metadata).
+ * If the LLM response hits MAX_TOKENS (truncated), the chunk is split in half and each
+ * half is retried — recursively, down to a single page — so no content is lost.
+ */
+async function processChunkItems(
+    pdfBuffer: Buffer,
+    startPage: number,
+    endPage: number,
+    totalPages: number,
+    fileType: string,
+    isFirst: boolean,
+): Promise<ChunkResult> {
+    const chunkBuffer = await extractPdfPageRange(pdfBuffer, startPage, endPage)
+    const pageRange = `${startPage + 1}-${endPage + 1}`
+
+    const { text: chunkText, docAiCostUsd, hasText } = await extractChunkText(
+        chunkBuffer, pageRange, totalPages, fileType,
+    )
+
+    let response: Awaited<ReturnType<typeof callLlm>>
+
+    if (isFirst) {
+        const userPrompt = buildCatExtractionUserPrompt(chunkText)
+        const llmPayload = hasText
+            ? { max_tokens: MAX_OUTPUT_TOKENS, system: CAT_EXTRACTION_SYSTEM_PROMPT, messages: [{ role: 'user' as const, content: userPrompt }] }
+            : { max_tokens: MAX_OUTPUT_TOKENS, system: CAT_EXTRACTION_SYSTEM_PROMPT, messages: [{ role: 'user' as const, content: userPrompt, inlineFiles: [{ data: chunkBuffer, mimeType: 'application/pdf' as const }] }] }
+        response = await callLlm(llmPayload)
+    } else {
+        const userPrompt = buildCatItemsOnlyUserPrompt(pageRange)
+        const fullPrompt = hasText ? `${userPrompt}\n\nTexto extraído:\n${chunkText}` : userPrompt
+        const llmPayload = hasText
+            ? { max_tokens: MAX_OUTPUT_TOKENS, system: CAT_EXTRACTION_SYSTEM_PROMPT, messages: [{ role: 'user' as const, content: fullPrompt }] }
+            : { max_tokens: MAX_OUTPUT_TOKENS, system: CAT_EXTRACTION_SYSTEM_PROMPT, messages: [{ role: 'user' as const, content: userPrompt, inlineFiles: [{ data: chunkBuffer, mimeType: 'application/pdf' as const }] }] }
+        response = await callLlm(llmPayload)
+    }
+
+    // If output was truncated AND chunk has more than 1 page: split in half and retry each half
+    if (response.finishReason === 'MAX_TOKENS' && endPage > startPage) {
+        const mid = Math.floor((startPage + endPage) / 2)
+        console.warn(`[cat-extraction] pages ${pageRange} hit MAX_TOKENS — splitting into ${startPage + 1}-${mid + 1} and ${mid + 2}-${endPage + 1}`)
+        const r1 = await processChunkItems(pdfBuffer, startPage, mid, totalPages, fileType, isFirst)
+        const r2 = await processChunkItems(pdfBuffer, mid + 1, endPage, totalPages, fileType, false)
+        return {
+            meta: r1.meta,
+            items: [...r1.items, ...r2.items],
+            inputTokens: r1.inputTokens + r2.inputTokens,
+            outputTokens: r1.outputTokens + r2.outputTokens,
+            docAiCostUsd: r1.docAiCostUsd + r2.docAiCostUsd,
+        }
+    }
+
+    if (response.finishReason === 'MAX_TOKENS') {
+        console.warn(`[cat-extraction] pages ${pageRange} hit MAX_TOKENS on a single page — items may be incomplete`)
+    }
+
+    if (isFirst) {
+        const meta = parseCatExtractionXml(response.text)
+        return { meta, items: meta.itens, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, docAiCostUsd }
+    } else {
+        const items = parseCatItemsOnlyXml(response.text)
+        return { items, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, docAiCostUsd }
     }
 }
 
@@ -199,74 +294,17 @@ async function processCatExtraction(
         for (let i = 0; i < numChunks; i++) {
             const startPage = i * CHUNK_SIZE
             const endPage = Math.min(startPage + CHUNK_SIZE - 1, totalPages - 1)
-            const chunkBuffer = await extractPdfPageRange(pdfBuffer, startPage, endPage)
-            const pageRange = `${startPage + 1}-${endPage + 1}`
+            const isFirst = i === 0
 
-            const { text: chunkText, docAiCostUsd } = await extractChunkText(
-                chunkBuffer,
-                pageRange,
-                totalPages,
-            )
-            totalDocAiCostUsd += docAiCostUsd
+            console.log(`[cat-extraction] processing pages ${startPage + 1}-${endPage + 1} of ${totalPages}`)
 
-            if (i === 0) {
-                const userPrompt = buildCatExtractionUserPrompt(chunkText)
+            const result = await processChunkItems(pdfBuffer, startPage, endPage, totalPages, fileType, isFirst)
 
-                const llmPayload = FORM_PARSER_CONFIGURED
-                    ? {
-                          max_tokens: 8192,
-                          system: CAT_EXTRACTION_SYSTEM_PROMPT,
-                          messages: [{ role: 'user' as const, content: userPrompt }],
-                      }
-                    : {
-                          max_tokens: 8192,
-                          system: CAT_EXTRACTION_SYSTEM_PROMPT,
-                          messages: [{
-                              role: 'user' as const,
-                              content: userPrompt,
-                              inlineFiles: [{ data: chunkBuffer, mimeType: 'application/pdf' as const }],
-                          }],
-                      }
-
-                const response = await callLlm(llmPayload)
-                if (response.finishReason === 'MAX_TOKENS') {
-                    console.warn(`[cat-extraction] chunk ${i} (pages ${pageRange}) hit MAX_TOKENS — response truncated. Reduce CHUNK_SIZE if items are missing.`)
-                }
-                parsedMeta = parseCatExtractionXml(response.text)
-                allItems.push(...parsedMeta.itens)
-                totalInputTokens += response.usage.input_tokens
-                totalOutputTokens += response.usage.output_tokens
-            } else {
-                const userPrompt = buildCatItemsOnlyUserPrompt(pageRange)
-                const fullPrompt = FORM_PARSER_CONFIGURED
-                    ? `${userPrompt}\n\nTexto extraído:\n${chunkText}`
-                    : userPrompt
-
-                const llmPayload = FORM_PARSER_CONFIGURED
-                    ? {
-                          max_tokens: 8192,
-                          system: CAT_EXTRACTION_SYSTEM_PROMPT,
-                          messages: [{ role: 'user' as const, content: fullPrompt }],
-                      }
-                    : {
-                          max_tokens: 8192,
-                          system: CAT_EXTRACTION_SYSTEM_PROMPT,
-                          messages: [{
-                              role: 'user' as const,
-                              content: userPrompt,
-                              inlineFiles: [{ data: chunkBuffer, mimeType: 'application/pdf' as const }],
-                          }],
-                      }
-
-                const response = await callLlm(llmPayload)
-                if (response.finishReason === 'MAX_TOKENS') {
-                    console.warn(`[cat-extraction] chunk ${i} (pages ${pageRange}) hit MAX_TOKENS — some items may be missing. Reduce CHUNK_SIZE.`)
-                }
-                const chunkItems = parseCatItemsOnlyXml(response.text)
-                allItems.push(...chunkItems)
-                totalInputTokens += response.usage.input_tokens
-                totalOutputTokens += response.usage.output_tokens
-            }
+            if (isFirst && result.meta) parsedMeta = result.meta
+            allItems.push(...result.items)
+            totalInputTokens += result.inputTokens
+            totalOutputTokens += result.outputTokens
+            totalDocAiCostUsd += result.docAiCostUsd
         }
 
         if (!parsedMeta) {
@@ -335,7 +373,7 @@ async function processCatExtraction(
                     .values({
                         tenantId,
                         jobType: 'embedding_gen',
-                        entityType: 'cat',
+                        entityType: 'cat_item',
                         entityId: item.id,
                         status: 'queued',
                     })

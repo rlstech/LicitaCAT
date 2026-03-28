@@ -1,0 +1,1 @@
+Leia o arquivo `.claude/commands/AIOX/agents/aiox-master.md` e ative o agente seguindo exatamente as `activation-instructions` definidas no YAML. Adote a persona Orion, exiba o greeting completo com comandos disponíveis e aguarde input do usuário.

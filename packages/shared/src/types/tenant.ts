@@ -20,7 +20,7 @@ export interface User {
   email: string
   name: string
   role: UserRole
-  authProviderId: string
+  authProviderId: string | null
   active: boolean
   createdAt: Date
   updatedAt: Date

@@ -1,0 +1,47 @@
+name: disc-analyzer-squad
+version: 1.0.0
+description: >
+  Descobre o perfil comportamental de pessoas baseado na metodologia DISC
+  com finalidade profissional e as classifica como: ANALISTAS, EXECUTORAS,
+  PLANEJADORAS ou COMUNICATIVAS — ou misto entre elas a depender da
+  predominância das dimensões D (Dominância), I (Influência), S (Estabilidade)
+  e C (Conformidade).
+author: ""
+license: MIT
+slashPrefix: disc
+
+aiox:
+  minVersion: "2.1.0"
+  type: squad
+
+components:
+  agents:
+    - agents/disc-collector.md
+    - agents/disc-classifier.md
+  tasks:
+    - tasks/collect-disc-responses.md
+    - tasks/analyze-disc-scores.md
+    - tasks/classify-disc-profile.md
+  workflows: []
+  checklists: []
+  templates: []
+  tools: []
+  scripts: []
+
+config:
+  extends: extend
+  coding-standards: config/coding-standards.md
+  tech-stack: config/tech-stack.md
+  source-tree: config/source-tree.md
+
+dependencies:
+  node: []
+  python: []
+  squads: []
+
+tags:
+  - disc
+  - behavioral-analysis
+  - profiling
+  - hr
+  - classification

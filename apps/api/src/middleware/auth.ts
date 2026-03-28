@@ -1,8 +1,8 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
-import { getAuth } from '@clerk/fastify'
+import { getAuth, clerkClient } from '@clerk/fastify'
 import { db } from '@licitacat/db'
 import { users } from '@licitacat/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, and, isNull } from 'drizzle-orm'
 import { UnauthorizedError, ForbiddenError } from '@licitacat/shared/errors'
 import type { UserRole } from '@licitacat/shared/types'
 
@@ -24,9 +24,36 @@ export async function requireAuth(
     throw new UnauthorizedError()
   }
 
-  const user = await db.query.users.findFirst({
+  // 1. Fast path: find by Clerk user ID (normal flow)
+  let user = await db.query.users.findFirst({
     where: eq(users.authProviderId, authProviderId),
   })
+
+  // 2. Fallback: find invited user by email and auto-link
+  if (!user) {
+    try {
+      const clerkUser = await clerkClient.users.getUser(authProviderId)
+      const email = clerkUser.emailAddresses[0]?.emailAddress
+      if (email) {
+        const pending = await db.query.users.findFirst({
+          where: and(eq(users.email, email), isNull(users.authProviderId)),
+        })
+        if (pending) {
+          const [linked] = await db
+            .update(users)
+            .set({ authProviderId, updatedAt: new Date() })
+            .where(eq(users.id, pending.id))
+            .returning()
+          request.log.info({ email, userId: pending.id }, 'Auto-linked Clerk user to invited record')
+          user = linked
+        } else {
+          request.log.warn({ email, authProviderId }, 'Clerk user not found in tenant — no pending invite')
+        }
+      }
+    } catch (err) {
+      request.log.error({ authProviderId, err }, 'Clerk API call failed during auto-link')
+    }
+  }
 
   if (!user || !user.active) {
     throw new UnauthorizedError('User not found or inactive')

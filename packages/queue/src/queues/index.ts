@@ -64,9 +64,26 @@ export const embeddingGenQueue = new Queue<EmbeddingGenJobData>(
   { connection, defaultJobOptions: retryJobOptions },
 )
 
+export interface PncpSyncJobData {
+  tenantId: string
+  configId: string
+  triggeredBy: 'schedule' | 'manual'
+}
+
+export const pncpSyncQueue = new Queue<PncpSyncJobData>('pncp_sync', {
+  connection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential' as const, delay: 30000 },
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 50 },
+  },
+})
+
 export const allQueues = [
   editalExtractionQueue,
   catExtractionQueue,
   crossingQueue,
   embeddingGenQueue,
+  pncpSyncQueue,
 ] as const

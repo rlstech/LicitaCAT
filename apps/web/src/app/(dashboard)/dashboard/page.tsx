@@ -3,6 +3,16 @@ import Link from 'next/link'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
+interface ReviewPendingEdital {
+  id: string
+  objeto: string | null
+  orgaoLicitante: string | null
+  modalidade: string | null
+  dataAbertura: string | null
+  updatedAt: string
+  avgConfidence: string
+}
+
 interface DashboardStats {
   editais: {
     total: number
@@ -14,16 +24,101 @@ interface DashboardStats {
   cats: { total: number }
   crossings: { totalThisMonth: number; avgScore: number | null }
   costs: { totalOcrCost: string; totalAiCost: string }
+  reviewPendingEditais: ReviewPendingEdital[]
+  upcomingEditais: Array<{
+    id: string
+    numeroEdital: string | null
+    objeto: string | null
+    valorEstimado: string | null
+    dataAbertura: string | null
+  }>
   recentJobs: Array<{
     id: string
     jobType: string
-    entityType: string
+    entityType: string | null
+    entityId: string | null
     status: string
+    errorMessage: string | null
     createdAt: string
     completedAt: string | null
-    errorMessage: string | null
-    costUsd: string | null
+    entityName: string | null
   }>
+}
+
+const MODALIDADE_LABEL: Record<string, string> = {
+  pregao_eletronico: 'Pregão Eletrônico',
+  pregao_presencial: 'Pregão Presencial',
+  concorrencia: 'Concorrência',
+  tomada_de_precos: 'Tom. Preços',
+  convite: 'Convite',
+  leilao: 'Leilão',
+  concurso: 'Concurso',
+  rdc: 'RDC',
+  credenciamento: 'Credenciamento',
+  outro: 'Edital',
+}
+
+function getUrgency(dataAbertura: string | null): 'Alta' | 'Média' | 'Baixa' {
+  if (!dataAbertura) return 'Baixa'
+  const days = (new Date(dataAbertura).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  if (days <= 7) return 'Alta'
+  if (days <= 30) return 'Média'
+  return 'Baixa'
+}
+
+function relativeTime(date: string): string {
+  const hours = Math.floor((Date.now() - new Date(date).getTime()) / (1000 * 60 * 60))
+  if (hours < 1) return 'Extraído há menos de 1h'
+  if (hours < 24) return `Extraído há ${hours}h`
+  return `Extraído há ${Math.floor(hours / 24)}d`
+}
+
+const MONTHS_PT = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ']
+
+function formatAbertura(dataAbertura: string | null): { month: string; day: string; time: string } {
+  if (!dataAbertura) return { month: '—', day: '—', time: '—' }
+  const d = new Date(dataAbertura)
+  return {
+    month: MONTHS_PT[d.getMonth()] ?? '—',
+    day: String(d.getDate()).padStart(2, '0'),
+    time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+  }
+}
+
+function formatValueShort(valor: string | null): string {
+  if (!valor) return '—'
+  const n = Number(valor)
+  if (n >= 1_000_000) return `R$ ${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `R$ ${(n / 1_000).toFixed(0)}K`
+  return `R$ ${n.toLocaleString('pt-BR')}`
+}
+
+const JOB_TITLE: Record<string, Record<string, string>> = {
+  ocr:               { completed: 'OCR concluído',            running: 'OCR em andamento',        failed: 'Erro no OCR',            queued: 'OCR na fila',            retrying: 'Reprocessando OCR' },
+  edital_extraction: { completed: 'Extração concluída',       running: 'Extração em andamento',   failed: 'Erro na extração',       queued: 'Extração na fila',       retrying: 'Reprocessando extração' },
+  cat_extraction:    { completed: 'CAT processada',           running: 'Processando CAT',         failed: 'Erro na CAT',            queued: 'CAT na fila',            retrying: 'Reprocessando CAT' },
+  crossing:          { completed: 'Cruzamento concluído',     running: 'Cruzamento em andamento', failed: 'Erro no cruzamento',     queued: 'Cruzamento na fila',     retrying: 'Reprocessando cruzamento' },
+  embedding_gen:     { completed: 'Embeddings gerados',       running: 'Gerando embeddings',      failed: 'Erro nos embeddings',    queued: 'Embeddings na fila',     retrying: 'Reprocessando embeddings' },
+}
+
+function jobTitle(jobType: string, status: string): string {
+  return JOB_TITLE[jobType]?.[status] ?? JOB_TITLE[jobType]?.['queued'] ?? jobType
+}
+
+function jobColor(status: string): string {
+  if (status === 'completed') return 'bg-emerald-500'
+  if (status === 'running')   return 'bg-blue-500'
+  if (status === 'failed')    return 'bg-red-500'
+  return 'bg-amber-500'
+}
+
+function jobIcon(jobType: string, status: string): string {
+  if (status === 'failed') return 'error'
+  if (jobType === 'crossing') return 'layers'
+  if (jobType === 'cat_extraction') return 'upload_file'
+  if (jobType === 'ocr') return 'document_scanner'
+  if (status === 'completed') return 'check_circle'
+  return 'sync'
 }
 
 async function fetchStats(token: string | null): Promise<DashboardStats | null> {
@@ -40,245 +135,324 @@ async function fetchStats(token: string | null): Promise<DashboardStats | null> 
   }
 }
 
-const JOB_TYPE_LABELS: Record<string, string> = {
-  ocr: 'OCR',
-  edital_extraction: 'Extração de Edital',
-  cat_extraction: 'Extração de CAT',
-  crossing: 'Cruzamento',
-  embedding_gen: 'Geração de Embeddings',
-}
-
-const JOB_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  queued: { label: 'Aguardando', color: 'bg-gray-100 text-gray-700' },
-  running: { label: 'Executando', color: 'bg-blue-100 text-blue-700' },
-  completed: { label: 'Concluído', color: 'bg-green-100 text-green-700' },
-  failed: { label: 'Falhou', color: 'bg-red-100 text-red-700' },
-  retrying: { label: 'Tentando', color: 'bg-yellow-100 text-yellow-700' },
-}
-
 export default async function DashboardPage() {
   const { getToken } = auth()
   const token = await getToken()
   const stats = await fetchStats(token)
 
-  const totalCost =
-    stats
-      ? (parseFloat(stats.costs.totalOcrCost) + parseFloat(stats.costs.totalAiCost)).toFixed(4)
-      : null
+  const avgScore = stats?.crossings.avgScore ?? 0
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Visão geral do acervo e atividades recentes.
-        </p>
+    <div className="space-y-6">
+
+      {/* ── Page header ── */}
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">Dashboard</h1>
+        <p className="mt-0.5 text-sm text-slate-500">Visão geral do acervo e atividades</p>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Editais prontos"
-          value={stats ? String(stats.editais.prontos) : '—'}
-          description={`${stats?.editais.total ?? 0} total • ${stats?.editais.processando ?? 0} processando`}
-          href="/editais"
-          icon={
-            <svg className="h-6 w-6 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-          }
-        />
-
-        <StatCard
-          title="CATs no acervo"
-          value={stats ? String(stats.cats.total) : '—'}
-          description="CATs ativas cadastradas"
-          href="/cats"
-          icon={
-            <svg className="h-6 w-6 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-            </svg>
-          }
-        />
-
-        <StatCard
-          title="Cruzamentos (mês)"
-          value={stats ? String(stats.crossings.totalThisMonth) : '—'}
-          description={
-            stats?.crossings.avgScore != null
-              ? `Score médio: ${stats.crossings.avgScore}`
-              : 'Nenhum cruzamento concluído'
-          }
-          href="/cruzamentos"
-          icon={
-            <svg className="h-6 w-6 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-            </svg>
-          }
-        />
-
-        <StatCard
-          title="Custo total IA"
-          value={totalCost ? `$${totalCost}` : '—'}
-          description="OCR + extração + cruzamentos"
-          href="/editais"
-          icon={
-            <svg className="h-6 w-6 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-            </svg>
-          }
-        />
-      </div>
-
-      {/* Awaiting Review Alert */}
-      {stats && stats.editais.aguardandoRevisao > 0 && (
-        <div className="mt-6 flex items-center gap-3 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-          <svg className="h-5 w-5 shrink-0 text-yellow-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-          </svg>
-          <p className="text-sm text-yellow-800">
-            <span className="font-semibold">{stats.editais.aguardandoRevisao} edital(is)</span> aguardando revisão de requisitos antes do cruzamento.{' '}
-            <Link href="/editais" className="underline hover:text-yellow-900">Revisar agora →</Link>
-          </p>
-        </div>
-      )}
-
-      {/* Recent Activity */}
-      <div className="mt-8">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Atividade recente</h2>
-
-        {!stats || stats.recentJobs.length === 0 ? (
-          <div className="rounded-lg border bg-white p-8 text-center shadow-sm">
-            <p className="text-sm text-gray-500">
-              Nenhuma atividade recente. Comece fazendo o{' '}
-              <Link href="/editais/upload" className="text-brand-600 hover:underline">upload de um edital</Link>.
-            </p>
+      {/* ── Bento Stats Grid ── */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {/* Editais em Análise */}
+        <div className="flex flex-col rounded-2xl bg-white p-5 shadow-sm" style={{ border: '1px solid var(--border-soft)' }}>
+          <div className="flex items-center justify-between">
+            <span className="material-symbols-outlined text-[22px] text-brand-600">description</span>
+            {stats && stats.editais.processando > 0 && (
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                +{stats.editais.processando} processando
+              </span>
+            )}
           </div>
-        ) : (
-          <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Tipo</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Entidade</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Custo</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Data</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {stats.recentJobs.map((job) => {
-                  const statusCfg = JOB_STATUS_CONFIG[job.status] ?? { label: job.status, color: 'bg-gray-100 text-gray-700' }
+          <p className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
+            {stats ? stats.editais.total : '—'}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">Editais em Análise</p>
+        </div>
+
+        {/* CATs Cadastradas */}
+        <div className="flex flex-col rounded-2xl bg-white p-5 shadow-sm" style={{ border: '1px solid var(--border-soft)' }}>
+          <div className="flex items-center justify-between">
+            <span
+              className="material-symbols-outlined text-[22px] text-brand-600"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              verified
+            </span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+              Total acumulado
+            </span>
+          </div>
+          <p className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
+            {stats ? stats.cats.total : '—'}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">CATs Cadastradas</p>
+        </div>
+
+        {/* Cruzamentos Realizados */}
+        <div className="flex flex-col rounded-2xl bg-white p-5 shadow-sm" style={{ border: '1px solid var(--border-soft)' }}>
+          <div className="flex items-center justify-between">
+            <span className="material-symbols-outlined text-[22px] text-brand-600">layers</span>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+              Este mês
+            </span>
+          </div>
+          <p className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
+            {stats ? stats.crossings.totalThisMonth : '—'}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">Cruzamentos Realizados</p>
+        </div>
+
+        {/* Média de Aderência — card destacado */}
+        <div className="relative flex flex-col overflow-hidden rounded-2xl bg-brand-600 p-5 text-white shadow-sm">
+          <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10" />
+          <div className="flex items-center justify-between relative">
+            <span className="material-symbols-outlined text-[22px] text-white/80">analytics</span>
+          </div>
+          <p className="mt-4 text-3xl font-bold tracking-tight relative">
+            {avgScore}%
+          </p>
+          <p className="mt-1 text-xs text-white/70 relative">Média de Aderência</p>
+        </div>
+      </div>
+
+      {/* ── Grid Principal (2/3 + 1/3) ── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+        {/* Coluna esquerda (2/3) */}
+        <div className="space-y-6 lg:col-span-2">
+
+          {/* Editais Prontos para Revisão */}
+          <div className="rounded-2xl bg-white p-5 shadow-sm" style={{ border: '1px solid var(--border-soft)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[20px] text-brand-600">fact_check</span>
+                <h2 className="text-sm font-semibold text-slate-900">Editais Prontos para Revisão</h2>
+              </div>
+              <Link href="/editais" className="text-xs font-medium text-brand-600 hover:underline">
+                Ver todos
+              </Link>
+            </div>
+
+            {stats && stats.reviewPendingEditais && stats.reviewPendingEditais.length > 0 ? (
+              <div className="space-y-3">
+                {stats.reviewPendingEditais.map((e) => (
+                  <ReviewItem
+                    key={e.id}
+                    href={`/editais/${e.id}`}
+                    category={MODALIDADE_LABEL[e.modalidade ?? ''] ?? 'Edital'}
+                    title={e.objeto ?? e.orgaoLicitante ?? 'Edital sem descrição'}
+                    date={relativeTime(e.updatedAt)}
+                    score={Number(e.avgConfidence)}
+                    urgency={getUrgency(e.dataAbertura)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <span className="material-symbols-outlined text-[32px] text-slate-300">task_alt</span>
+                <p className="mt-2 text-sm text-slate-400">Nenhum edital pendente de revisão</p>
+              </div>
+            )}
+          </div>
+
+          {/* Atividades Recentes */}
+          <div className="rounded-2xl bg-[#f8fcff] p-5" style={{ border: '1px solid var(--border-soft)' }}>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined text-[20px] text-brand-600">history</span>
+              <h2 className="text-sm font-semibold text-slate-900">Atividades Recentes</h2>
+            </div>
+
+            {stats?.recentJobs && stats.recentJobs.length > 0 ? (
+              <div className="space-y-4">
+                {stats.recentJobs.slice(0, 5).map((job) => (
+                  <ActivityItem
+                    key={job.id}
+                    color={jobColor(job.status)}
+                    icon={jobIcon(job.jobType, job.status)}
+                    title={jobTitle(job.jobType, job.status)}
+                    description={
+                      job.status === 'failed' && job.errorMessage
+                        ? job.errorMessage.slice(0, 80)
+                        : (job.entityName ?? '—')
+                    }
+                    time={relativeTime(job.completedAt ?? job.createdAt)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <span className="material-symbols-outlined text-[28px] text-slate-300">history_toggle_off</span>
+                <p className="mt-2 text-sm text-slate-400">Nenhuma atividade recente</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Coluna direita (1/3) */}
+        <div className="space-y-6">
+
+          {/* Próximas Aberturas */}
+          <div className="rounded-2xl bg-white p-5 shadow-sm" style={{ border: '1px solid var(--border-soft)' }}>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined text-[20px] text-brand-600">calendar_month</span>
+              <h2 className="text-sm font-semibold text-slate-900">Próximas Aberturas</h2>
+            </div>
+
+            {stats?.upcomingEditais && stats.upcomingEditais.length > 0 ? (
+              <div className="space-y-3">
+                {stats.upcomingEditais.map((e) => {
+                  const { month, day, time } = formatAbertura(e.dataAbertura)
                   return (
-                    <tr key={job.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {JOB_TYPE_LABELS[job.jobType] ?? job.jobType}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500 capitalize">{job.entityType}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusCfg.color}`}>
-                          {statusCfg.label}
-                        </span>
-                        {job.errorMessage && (
-                          <p className="mt-0.5 text-xs text-red-600 truncate max-w-xs" title={job.errorMessage}>
-                            {job.errorMessage}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {job.costUsd ? `$${parseFloat(job.costUsd).toFixed(4)}` : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {new Date(job.createdAt).toLocaleString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </td>
-                    </tr>
+                    <Link key={e.id} href={`/editais/${e.id}`} className="block">
+                      <CalendarItem
+                        month={month}
+                        day={day}
+                        title={e.objeto ?? e.numeroEdital ?? 'Edital sem descrição'}
+                        time={time}
+                        value={formatValueShort(e.valorEstimado)}
+                      />
+                    </Link>
                   )
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </div>
+            ) : (
+              <div className="py-6 text-center">
+                <span className="material-symbols-outlined text-[28px] text-slate-300">event_busy</span>
+                <p className="mt-2 text-sm text-slate-400">Nenhuma abertura nos próximos 14 dias</p>
+              </div>
+            )}
 
-      {/* Quick Actions */}
-      <div className="mt-8">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Ações rápidas</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <QuickActionCard
-            href="/editais/upload"
-            title="Novo edital"
-            description="Faça upload de um edital para extração de requisitos"
-            icon="📄"
-          />
-          <QuickActionCard
-            href="/cats/upload"
-            title="Nova CAT"
-            description="Adicione uma CAT ao acervo técnico da empresa"
-            icon="📋"
-          />
-          <QuickActionCard
-            href="/cruzamentos"
-            title="Ver cruzamentos"
-            description="Analise a aderência de editais ao seu acervo"
-            icon="🔀"
-          />
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid var(--border-soft)' }}>
+              <Link href="/editais" className="text-xs font-medium text-brand-600 hover:underline">
+                Ver calendário completo
+              </Link>
+            </div>
+          </div>
+
+          {/* Insight Técnico */}
+          <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-brand-500 p-5 text-white shadow-sm">
+            <span className="material-symbols-outlined text-[22px] text-white/80">psychology</span>
+            <h3 className="mt-3 text-sm font-semibold">Insight Técnico</h3>
+            <p className="mt-2 text-xs text-white/80 leading-relaxed">
+              Seu acervo tem forte cobertura em obras de pavimentação e saneamento.
+              Considere ampliar CATs em edificações para aumentar a elegibilidade em 35% dos editais disponíveis.
+            </p>
+            <Link
+              href="/cruzamentos"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/30"
+            >
+              <span className="material-symbols-outlined text-[16px]">trending_up</span>
+              Analisar Match Técnico
+            </Link>
+          </div>
+
+          {/* Mapa placeholder */}
+          <div className="relative flex h-48 items-center justify-center rounded-2xl bg-slate-200 overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent" />
+            <div className="relative text-center">
+              <span className="material-symbols-outlined text-[28px] text-white/90">map</span>
+              <p className="mt-1 text-xs font-semibold text-white/90 uppercase tracking-wider">Mapa de Obras Ativas</p>
+              <p className="text-[10px] text-white/60">Em breve</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function StatCard({
-  title,
-  value,
-  description,
-  href,
-  icon,
+// ── Componentes auxiliares ─────────────────────────────────────────────────────
+
+function ReviewItem({
+  href, category, title, date, score, urgency,
 }: {
-  title: string
-  value: string
-  description: string
   href: string
-  icon: React.ReactNode
+  category: string
+  title: string
+  date: string
+  score: number
+  urgency: 'Alta' | 'Média' | 'Baixa'
 }) {
+  const urgencyStyles = {
+    Alta: 'bg-red-50 text-red-700',
+    Média: 'bg-amber-50 text-amber-700',
+    Baixa: 'bg-emerald-50 text-emerald-700',
+  }
+
   return (
-    <Link href={href} className="block rounded-lg border bg-white p-6 shadow-sm transition hover:shadow-md">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-500">{title}</p>
-        {icon}
+    <Link
+      href={href}
+      className="flex items-center gap-3 rounded-xl p-3 transition-colors hover:bg-slate-50"
+      style={{ border: '1px solid var(--border-soft)' }}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600">
+            {category}
+          </span>
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${urgencyStyles[urgency]}`}>
+            {urgency}
+          </span>
+        </div>
+        <p className="text-sm font-medium text-slate-800 truncate">{title}</p>
+        <p className="text-[11px] text-slate-400 mt-0.5">{date}</p>
       </div>
-      <p className="mt-3 text-3xl font-bold text-gray-900">{value}</p>
-      <p className="mt-1 text-xs text-gray-500">{description}</p>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-sm font-bold text-brand-600">{score}%</span>
+        <span className="material-symbols-outlined text-[18px] text-slate-300">chevron_right</span>
+      </div>
     </Link>
   )
 }
 
-function QuickActionCard({
-  href,
-  title,
-  description,
-  icon,
+function ActivityItem({
+  color, icon, title, description, time,
 }: {
-  href: string
+  color: string
+  icon: string
   title: string
   description: string
-  icon: string
+  time: string
 }) {
   return (
-    <Link
-      href={href}
-      className="flex items-start gap-4 rounded-lg border bg-white p-5 shadow-sm transition hover:border-brand-300 hover:shadow-md"
-    >
-      <span className="text-2xl">{icon}</span>
-      <div>
-        <p className="font-medium text-gray-900">{title}</p>
-        <p className="mt-1 text-sm text-gray-500">{description}</p>
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <div className={`flex h-8 w-8 items-center justify-center rounded-full ${color}`}>
+          <span className="material-symbols-outlined text-[16px] text-white">{icon}</span>
+        </div>
+        <div className="mt-1 h-full w-px bg-slate-200" />
       </div>
-    </Link>
+      <div className="min-w-0 flex-1 pb-4">
+        <p className="text-sm font-medium text-slate-800">{title}</p>
+        <p className="text-xs text-slate-500 mt-0.5">{description}</p>
+        <p className="text-[11px] text-slate-400 mt-1">{time}</p>
+      </div>
+    </div>
+  )
+}
+
+function CalendarItem({
+  month, day, title, time, value,
+}: {
+  month: string
+  day: string
+  title: string
+  time: string
+  value: string
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-brand-50">
+        <span className="text-[10px] font-bold uppercase text-brand-600 leading-none">{month}</span>
+        <span className="text-lg font-bold text-brand-600 leading-none mt-0.5">{day}</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-slate-800 truncate">{title}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-[11px] text-slate-400">{time}</span>
+          <span className="text-[11px] font-semibold text-slate-600">{value}</span>
+        </div>
+      </div>
+    </div>
   )
 }

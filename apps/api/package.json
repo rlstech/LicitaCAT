@@ -19,7 +19,9 @@
     "@licitacat/db": "workspace:*",
     "@licitacat/queue": "workspace:*",
     "@licitacat/shared": "workspace:*",
+    "adm-zip": "^0.5.10",
     "fastify": "^4.26.0",
+    "pdf-parse": "^2.4.5",
     "zod": "^3.22.0"
   },
   "devDependencies": {

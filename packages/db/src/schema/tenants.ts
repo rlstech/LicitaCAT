@@ -41,7 +41,7 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull(),
   name: varchar('name', { length: 300 }).notNull(),
   role: userRoleEnum('role').notNull().default('analyst'),
-  authProviderId: varchar('auth_provider_id', { length: 255 }).notNull().unique(),
+  authProviderId: varchar('auth_provider_id', { length: 255 }).unique(),
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

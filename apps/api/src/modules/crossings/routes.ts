@@ -3,8 +3,8 @@ import { z } from 'zod'
 import { requireAuth, requireRole } from '../../middleware/auth.js'
 import { NotFoundError, ValidationError } from '@licitacat/shared/errors'
 import { db } from '@licitacat/db'
-import { crossings, crossingItems, crossingItemCats, reqParcelasRelevancia, editais, processingJobs, cats } from '@licitacat/db/schema'
-import { eq, and, desc } from 'drizzle-orm'
+import { crossings, crossingItems, crossingItemCats, reqParcelasRelevancia, editais, processingJobs, cats, catItens } from '@licitacat/db/schema'
+import { eq, and, desc, sql, count, inArray } from 'drizzle-orm'
 import { crossingQueue } from '@licitacat/queue/queues'
 
 const RESULTADO_LABELS: Record<string, string> = {
@@ -40,11 +40,39 @@ const OverrideItemSchema = z.object({
   note: z.string().max(1000).optional(),
 })
 
+async function recalcularCrossingStats(crossingId: string, tenantId: string) {
+  const rows = await db
+    .select({ resultado: crossingItems.resultado, total: count() })
+    .from(crossingItems)
+    .where(and(eq(crossingItems.crossingId, crossingId), eq(crossingItems.tenantId, tenantId)))
+    .groupBy(crossingItems.resultado)
+
+  const atendidos = Number(rows.find(r => r.resultado === 'atendido')?.total ?? 0)
+  const parciais  = Number(rows.find(r => r.resultado === 'atendido_parcialmente')?.total ?? 0)
+  const gaps      = Number(rows.find(r => r.resultado === 'gap')?.total ?? 0)
+  const total = atendidos + parciais + gaps
+  const score = total > 0 ? Math.round(((atendidos + parciais * 0.5) / total) * 100) : 0
+  const recomendacao = score >= 70 ? 'participar' : score >= 40 ? 'participar_com_ressalvas' : 'nao_participar'
+
+  await db
+    .update(crossings)
+    .set({
+      scoreAderencia: score,
+      requisitosAtendidos: atendidos,
+      requisitosComRessalva: parciais,
+      requisitosGap: gaps,
+      recomendacao: recomendacao as 'participar' | 'participar_com_ressalvas' | 'nao_participar',
+      updatedAt: new Date(),
+    })
+    .where(and(eq(crossings.id, crossingId), eq(crossings.tenantId, tenantId)))
+}
+
 export async function crossingsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth)
 
-  // GET /api/crossings
+  // GET /api/crossings — returns one entry per edital (most recent crossing), with total count
   app.get('/', async (request) => {
+    // Fetch all crossings with edital info, most recent first
     const rows = await db
       .select({
         id: crossings.id,
@@ -67,8 +95,40 @@ export async function crossingsRoutes(app: FastifyInstance) {
       .innerJoin(editais, eq(crossings.editalId, editais.id))
       .where(eq(crossings.tenantId, request.tenantId))
       .orderBy(desc(crossings.createdAt))
-      .limit(50)
-    return rows
+      .limit(200)
+
+    // Group by editalId, keeping the most recent crossing per edital + total count
+    const editalMap = new Map<string, { latest: typeof rows[0]; count: number }>()
+    for (const row of rows) {
+      const existing = editalMap.get(row.editalId)
+      if (!existing) {
+        editalMap.set(row.editalId, { latest: row, count: 1 })
+      } else {
+        existing.count++
+        // Keep the most recent (rows are already ordered by createdAt desc)
+      }
+    }
+
+    const latestIds = Array.from(editalMap.values()).map(({ latest }) => latest.id)
+    const pendingCounts = latestIds.length > 0
+      ? await db
+          .select({ crossingId: crossingItems.crossingId, pendingCount: count() })
+          .from(crossingItems)
+          .where(and(
+            inArray(crossingItems.crossingId, latestIds),
+            eq(crossingItems.resultado, 'atendido_parcialmente'),
+            eq(crossingItems.humanOverride, false),
+          ))
+          .groupBy(crossingItems.crossingId)
+      : []
+
+    const pendingMap = new Map(pendingCounts.map(p => [p.crossingId, Number(p.pendingCount)]))
+
+    return Array.from(editalMap.values()).map(({ latest, count: totalCrossings }) => ({
+      ...latest,
+      totalCrossings,
+      pendingCount: pendingMap.get(latest.id) ?? 0,
+    }))
   })
 
   // POST /api/crossings — trigger new crossing
@@ -119,20 +179,33 @@ export async function crossingsRoutes(app: FastifyInstance) {
   app.get('/:crossingId', async (request) => {
     const { crossingId } = CrossingParamsSchema.parse(request.params)
 
-    const crossing = await db.query.crossings.findFirst({
-      where: and(
-        eq(crossings.id, crossingId),
-        eq(crossings.tenantId, request.tenantId),
-      ),
-    })
+    const [crossing, pendingRows] = await Promise.all([
+      db.query.crossings.findFirst({
+        where: and(
+          eq(crossings.id, crossingId),
+          eq(crossings.tenantId, request.tenantId),
+        ),
+      }),
+      db
+        .select({ pendingCount: count() })
+        .from(crossingItems)
+        .where(and(
+          eq(crossingItems.crossingId, crossingId),
+          eq(crossingItems.tenantId, request.tenantId),
+          eq(crossingItems.resultado, 'atendido_parcialmente'),
+          eq(crossingItems.humanOverride, false),
+        )),
+    ])
 
     if (!crossing) throw new NotFoundError('Crossing', crossingId)
-    return crossing
+    return { ...crossing, pendingCount: Number(pendingRows[0]?.pendingCount ?? 0) }
   })
 
   // GET /api/crossings/:crossingId/items
   app.get('/:crossingId/items', async (request) => {
     const { crossingId } = CrossingParamsSchema.parse(request.params)
+    const { status } = z.object({ status: z.string().optional() }).parse(request.query)
+    const isPendente = status === 'pendente'
 
     const items = await db
       .select({
@@ -152,6 +225,10 @@ export async function crossingsRoutes(app: FastifyInstance) {
         and(
           eq(crossingItems.crossingId, crossingId),
           eq(crossingItems.tenantId, request.tenantId),
+          ...(isPendente ? [
+            eq(crossingItems.resultado, 'atendido_parcialmente'),
+            eq(crossingItems.humanOverride, false),
+          ] : []),
         ),
       )
       .orderBy(crossingItems.createdAt)
@@ -169,10 +246,15 @@ export async function crossingsRoutes(app: FastifyInstance) {
         catEmpresaContratante: cats.empresaContratante,
         catTipoObra: cats.tipoObraServico,
         catNumeroCat: cats.numeroCat,
+        catDescricaoTecnica: cats.descricaoTecnica,
+        catItemDescricao: catItens.descricao,
+        catItemQuantidade: catItens.quantidade,
+        catItemUnidade: catItens.unidade,
       })
       .from(crossingItemCats)
       .innerJoin(crossingItems, eq(crossingItemCats.crossingItemId, crossingItems.id))
       .innerJoin(cats, eq(crossingItemCats.catId, cats.id))
+      .leftJoin(catItens, eq(crossingItemCats.catItemId, catItens.id))
       .where(
         and(
           eq(crossingItems.crossingId, crossingId),
@@ -319,6 +401,10 @@ export async function crossingsRoutes(app: FastifyInstance) {
           ),
         )
         .returning()
+
+      if (!updated) throw new NotFoundError('CrossingItem', itemId)
+
+      await recalcularCrossingStats(crossingId, request.tenantId)
 
       return updated
     },

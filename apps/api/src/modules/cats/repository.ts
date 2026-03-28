@@ -1,6 +1,6 @@
 import { db } from '@licitacat/db'
 import { cats, catItens, profissionaisTecnicos, crossingItemCats, processingJobs } from '@licitacat/db/schema'
-import { eq, and, desc, count } from 'drizzle-orm'
+import { eq, and, desc, count, ilike, sql, getTableColumns } from 'drizzle-orm'
 import type {
   CreateProfissionalInput,
   UpdateProfissionalInput,
@@ -8,6 +8,12 @@ import type {
   UpdateCatItemInput,
   UpdateCatInput,
 } from '@licitacat/shared/schemas'
+
+/** Primeira letra maiúscula, restante minúsculo */
+function sentenceCase(str: string): string {
+  if (!str || str.length === 0) return str
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
+}
 
 export async function listProfissionais(tenantId: string) {
   return db
@@ -62,9 +68,14 @@ export async function listCats(
 
   const [rows, [total]] = await Promise.all([
     db
-      .select()
+      .select({
+        ...getTableColumns(cats),
+        itemCount: sql<number>`COALESCE(COUNT(${catItens.id}), 0)::int`,
+      })
       .from(cats)
+      .leftJoin(catItens, eq(catItens.catId, cats.id))
       .where(whereClause)
+      .groupBy(cats.id)
       .orderBy(desc(cats.createdAt))
       .limit(limit)
       .offset(offset),
@@ -129,7 +140,7 @@ export async function createCatItem(
   catId: string,
   data: CreateCatItemInput,
 ) {
-  const { quantidade, ...rest } = data
+  const { quantidade, descricao, unidade, ...rest } = data
   const [created] = await db
     .insert(catItens)
     .values({
@@ -137,6 +148,8 @@ export async function createCatItem(
       catId,
       origem: 'human_added',
       ...rest,
+      descricao: sentenceCase(descricao),
+      ...(unidade ? { unidade: sentenceCase(unidade) } : {}),
       ...(quantidade !== undefined ? { quantidade: quantidade.toFixed(4) } : {}),
     })
     .returning()
@@ -148,17 +161,68 @@ export async function updateCatItem(
   itemId: string,
   data: UpdateCatItemInput,
 ) {
-  const { quantidade, ...rest } = data
+  const { quantidade, descricao, unidade, ...rest } = data
   const [updated] = await db
     .update(catItens)
     .set({
       ...rest,
+      ...(descricao !== undefined ? { descricao: sentenceCase(descricao) } : {}),
+      ...(unidade !== undefined ? { unidade: unidade ? sentenceCase(unidade) : null } : {}),
       ...(quantidade !== undefined ? { quantidade: quantidade.toFixed(4) } : {}),
       updatedAt: new Date(),
     })
     .where(and(eq(catItens.id, itemId), eq(catItens.tenantId, tenantId)))
     .returning()
   return updated
+}
+
+export async function searchCatItens(
+  tenantId: string,
+  q: string,
+  catId?: string,
+  limit = 100,
+) {
+  const conditions = [
+    eq(catItens.tenantId, tenantId),
+    ilike(catItens.descricao, `%${q}%`),
+  ]
+  if (catId) conditions.push(eq(catItens.catId, catId))
+
+  return db
+    .select({
+      id: catItens.id,
+      catId: catItens.catId,
+      descricao: catItens.descricao,
+      unidade: catItens.unidade,
+      quantidade: catItens.quantidade,
+      numeroCat: cats.numeroCat,
+      empresaContratante: cats.empresaContratante,
+      tipoObraServico: cats.tipoObraServico,
+      fileName: cats.fileName,
+    })
+    .from(catItens)
+    .innerJoin(cats, eq(catItens.catId, cats.id))
+    .where(and(...conditions))
+    .orderBy(catItens.descricao)
+    .limit(limit)
+}
+
+export async function normalizeCatItensDescriptions(tenantId: string) {
+  await db.execute(sql`
+    UPDATE cat_itens
+    SET
+      descricao = UPPER(LEFT(descricao, 1)) || LOWER(SUBSTRING(descricao FROM 2)),
+      unidade = CASE
+        WHEN unidade IS NOT NULL
+        THEN UPPER(LEFT(unidade, 1)) || LOWER(SUBSTRING(unidade FROM 2))
+        ELSE NULL
+      END
+    WHERE tenant_id = ${tenantId}
+  `)
+  const result = await db.execute<{ count: string }>(
+    sql`SELECT COUNT(*)::text AS count FROM cat_itens WHERE tenant_id = ${tenantId}`
+  )
+  return { normalized: Number(result.rows[0]?.count ?? 0) }
 }
 
 export async function deleteCatItem(tenantId: string, itemId: string) {

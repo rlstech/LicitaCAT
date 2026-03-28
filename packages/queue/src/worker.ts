@@ -3,7 +3,10 @@ import {
     createCatExtractionWorker,
     createCrossingWorker,
     createEmbeddingGenWorker,
+    createPncpSyncWorker,
+    createPncpPurgeWorker,
 } from './processors/index.js'
+import { registerPncpSchedules } from './scheduler.js'
 
 console.log('🚀 Starting LicitaCAT workers...')
 
@@ -11,8 +14,17 @@ const editalExtractionWorker = createEditalExtractionWorker()
 const catExtractionWorker = createCatExtractionWorker()
 const crossingWorker = createCrossingWorker()
 const embeddingGenWorker = createEmbeddingGenWorker()
+const pncpSyncWorker = createPncpSyncWorker()
+const pncpPurgeWorker = createPncpPurgeWorker()
 
-const workers = [editalExtractionWorker, catExtractionWorker, crossingWorker, embeddingGenWorker]
+const workers = [
+    editalExtractionWorker,
+    catExtractionWorker,
+    crossingWorker,
+    embeddingGenWorker,
+    pncpSyncWorker,
+    pncpPurgeWorker,
+]
 
 // Logging
 for (const worker of workers) {
@@ -26,6 +38,11 @@ for (const worker of workers) {
 
     console.log(`  ✓ Worker "${worker.name}" ready`)
 }
+
+// Registrar schedules do PNCP
+registerPncpSchedules().catch(err => {
+    console.error('⚠️  Erro ao registrar PNCP schedules:', err)
+})
 
 // Graceful shutdown
 async function shutdown(): Promise<void> {
