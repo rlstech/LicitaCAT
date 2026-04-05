@@ -109,6 +109,32 @@ export async function callLlmWithCache(options: {
   }
 }
 
+export async function* streamLlm(options: {
+  model?: string
+  max_tokens?: number
+  system?: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+}): AsyncGenerator<string> {
+  const modelName = options.model ?? DEFAULT_MODEL
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    ...(options.system ? { systemInstruction: options.system } : {}),
+  })
+
+  const result = await model.generateContentStream({
+    contents: options.messages.map((m) => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: { maxOutputTokens: options.max_tokens ?? 2048 },
+  })
+
+  for await (const chunk of result.stream) {
+    const text = chunk.text()
+    if (text) yield text
+  }
+}
+
 export async function callLlm(options: {
   model?: string
   max_tokens?: number

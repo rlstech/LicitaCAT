@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import { requireAuth, requireRole } from '../../middleware/auth.js'
 import { NotFoundError, ValidationError } from '@licitacat/shared/errors'
+import { generateEmbedding } from '@licitacat/ai/embeddings'
+import { streamLlm, createLlmCache } from '@licitacat/ai/llm'
+import { CAT_CHAT_SYSTEM_PROMPT, buildCatChatContext, type CatContextItem } from '@licitacat/ai/prompts'
 import {
   CatParamsSchema,
   CatItemParamsSchema,
@@ -290,4 +293,141 @@ export async function catsRoutes(app: FastifyInstance) {
       return reply.status(202).send({ queued, cats: catsWithNull.length, catItems: itemsWithNull.length })
     },
   )
+
+  // ── Chat RAG ──────────────────────────────────────────────────────────────
+  const ChatRequestSchema = z.object({
+    message: z.string().min(1).max(2000),
+    history: z
+      .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(4000) }))
+      .max(20)
+      .default([]),
+    cacheName: z.string().optional(),
+  })
+
+  app.post('/chat', async (request, reply) => {
+    const parsed = ChatRequestSchema.safeParse(request.body)
+    if (!parsed.success) throw new ValidationError('Invalid body', parsed.error.flatten())
+    const { message, history, cacheName: incomingCache } = parsed.data
+    const { tenantId } = request
+
+    // 1. Embedding da query
+    const { embedding } = await generateEmbedding(message, 'query')
+    const vectorStr = `[${embedding.join(',')}]`
+
+    // 2. Busca semântica (pgvector)
+    const semanticRows = await db.execute(sql`
+      SELECT c.id, c.numero_cat, c.empresa_contratante, c.tipo_obra_servico, c.descricao_tecnica,
+             1 - (c.embedding <=> ${vectorStr}::vector) AS score
+      FROM cats c
+      WHERE c.tenant_id = ${tenantId}
+        AND c.ativo = true
+        AND c.embedding IS NOT NULL
+        AND c.embedding_model = 'gemini-embedding-2-preview'
+        AND c.status_extracao IN ('review_pending', 'completed')
+      ORDER BY score DESC
+      LIMIT 15
+    `)
+
+    // 3. Busca FTS (tsvector)
+    const ftsRows = await db.execute(sql`
+      SELECT DISTINCT c.id, c.numero_cat, c.empresa_contratante, c.tipo_obra_servico, c.descricao_tecnica,
+             ts_rank_cd(c.search_vector, plainto_tsquery('portuguese', immutable_unaccent(${message}))) AS rank
+      FROM cats c
+      WHERE c.tenant_id = ${tenantId}
+        AND c.ativo = true
+        AND c.search_vector @@ plainto_tsquery('portuguese', immutable_unaccent(${message}))
+      ORDER BY rank DESC
+      LIMIT 15
+    `)
+
+    // 4. Merge via RRF
+    type CatRow = {
+      id: string
+      numero_cat: string | null
+      empresa_contratante: string | null
+      tipo_obra_servico: string | null
+      descricao_tecnica: string | null
+    }
+    const semanticArr = Array.from(semanticRows as unknown as Iterable<CatRow>)
+    const ftsArr = Array.from(ftsRows as unknown as Iterable<CatRow>)
+
+    const RRF_K = 60
+    const semMap = new Map<string, number>()
+    semanticArr.forEach((r, i) => semMap.set(r.id, i + 1))
+    const ftsMap = new Map<string, number>()
+    ftsArr.forEach((r, i) => ftsMap.set(r.id, i + 1))
+
+    const allRows = new Map<string, CatRow>()
+    for (const r of [...semanticArr, ...ftsArr]) {
+      if (!allRows.has(r.id)) allRows.set(r.id, r)
+    }
+
+    const ranked = Array.from(allRows.entries())
+      .map(([id, row]) => {
+        const s = semMap.get(id)
+        const f = ftsMap.get(id)
+        const rrf = (s ? 1 / (RRF_K + s) : 0) + (f ? 1 / (RRF_K + f) : 0)
+        return { row, rrf }
+      })
+      .sort((a, b) => b.rrf - a.rrf)
+      .slice(0, 10)
+      .map(({ row }) => row)
+
+    const contextCats: CatContextItem[] = ranked.map((r) => ({
+      id: r.id,
+      numeroCat: r.numero_cat,
+      empresaContratante: r.empresa_contratante,
+      tipoObraServico: r.tipo_obra_servico,
+      descricaoTecnica: r.descricao_tecnica,
+    }))
+
+    // 5. Montar system prompt com contexto RAG
+    const contextBlock = buildCatChatContext(contextCats)
+    const systemPrompt = CAT_CHAT_SYSTEM_PROMPT.replace('{CONTEXT_BLOCK}', contextBlock)
+
+    // 6. Streaming SSE
+    reply.hijack()
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    })
+
+    const metaEvent = {
+      type: 'meta',
+      contextCats: contextCats.map((c) => ({
+        id: c.id,
+        numeroCat: c.numeroCat,
+        empresaContratante: c.empresaContratante,
+      })),
+    }
+    reply.raw.write(`data: ${JSON.stringify(metaEvent)}\n\n`)
+
+    const messages = [...history, { role: 'user' as const, content: message }]
+
+    try {
+      // 7. Tentar context cache no primeiro turno (fallback silencioso se < 32K tokens)
+      let activeCacheName = incomingCache
+      if (!activeCacheName && history.length === 0) {
+        try {
+          activeCacheName = await createLlmCache({ systemInstruction: systemPrompt, ttlSeconds: 600 })
+          reply.raw.write(`data: ${JSON.stringify({ type: 'cacheName', cacheName: activeCacheName })}\n\n`)
+        } catch {
+          // cache requer mínimo ~32K tokens — usar streamLlm padrão
+        }
+      }
+
+      const generator = streamLlm({ system: systemPrompt, messages })
+      for await (const chunk of generator) {
+        reply.raw.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`)
+      }
+      reply.raw.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro interno'
+      reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: msg })}\n\n`)
+    } finally {
+      reply.raw.end()
+    }
+  })
 }

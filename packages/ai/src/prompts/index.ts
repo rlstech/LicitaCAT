@@ -1,3 +1,5 @@
 export * from './edital-extraction.js'
 export * from './cat-extraction.js'
 export * from './crossing.js'
+export * from './pncp-classification.js'
+export * from './cat-chat.js'

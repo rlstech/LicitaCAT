@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
+import { CatChatDrawer } from './_components/cat-chat-drawer'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
@@ -78,7 +79,7 @@ function initials(name: string): string {
 }
 
 export default function CatsPage() {
-  const { getToken } = useAuth()
+  const getToken = useToken()
 
   const [cats, setCats] = useState<Cat[]>([])
   const [allCats, setAllCats] = useState<Cat[]>([])
@@ -106,6 +107,8 @@ export default function CatsPage() {
   const [embStatus, setEmbStatus] = useState<EmbeddingStatus | null>(null)
   const [showEmbPanel, setShowEmbPanel] = useState(false)
   const embPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const [chatOpen, setChatOpen] = useState(false)
 
   // ── Data fetching ──
   const fetchCats = useCallback(async () => {
@@ -759,6 +762,23 @@ export default function CatsPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Chat FAB ── */}
+      <button
+        onClick={() => setChatOpen(true)}
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#003746] to-[#00526a] text-white shadow-xl transition-all hover:scale-105 hover:shadow-2xl"
+        title="Assistente de Acervo"
+      >
+        <span
+          className="material-symbols-outlined text-[26px]"
+          style={{ fontVariationSettings: "'FILL' 1" }}
+        >
+          smart_toy
+        </span>
+      </button>
+
+      {/* ── Chat Drawer ── */}
+      <CatChatDrawer open={chatOpen} onClose={() => setChatOpen(false)} getToken={getToken} />
     </div>
   )
 }
