@@ -301,13 +301,14 @@ export async function catsRoutes(app: FastifyInstance) {
       .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(4000) }))
       .max(20)
       .default([]),
-    cacheName: z.string().optional(),
+    cacheName: z.string().nullable().optional(),
   })
 
   app.post('/chat', async (request, reply) => {
     const parsed = ChatRequestSchema.safeParse(request.body)
     if (!parsed.success) throw new ValidationError('Invalid body', parsed.error.flatten())
-    const { message, history, cacheName: incomingCache } = parsed.data
+    const { message, history, cacheName: rawCache } = parsed.data
+    const incomingCache = rawCache ?? undefined
     const { tenantId } = request
 
     // 1. Embedding da query

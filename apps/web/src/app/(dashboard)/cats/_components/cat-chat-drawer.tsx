@@ -150,7 +150,7 @@ export function CatChatDrawer({ open, onClose, getToken }: CatChatDrawerProps) {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ message: text.trim(), history, cacheName }),
+          body: JSON.stringify({ message: text.trim(), history, ...(cacheName ? { cacheName } : {}) }),
           signal: abortRef.current.signal,
         })
 
