@@ -154,67 +154,27 @@ export function CatChatDrawer({ open, onClose, getToken }: CatChatDrawerProps) {
           signal: abortRef.current.signal,
         })
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
           throw new Error(`Erro na requisição: ${response.status}`)
         }
 
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let assistantContent = ''
-        let buffer = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() ?? ''
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            const data = line.slice(6).trim()
-            if (!data) continue
-
-            let payload: Record<string, unknown>
-            try {
-              payload = JSON.parse(data) as Record<string, unknown>
-            } catch {
-              continue
-            }
-
-            if (payload['type'] === 'meta') {
-              setContextCats((payload['contextCats'] as ContextCat[]) ?? [])
-            } else if (payload['type'] === 'cacheName') {
-              setCacheName(payload['cacheName'] as string)
-            } else if (payload['type'] === 'chunk') {
-              assistantContent += payload['text'] as string
-              setMessages((prev) => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                if (last?.role === 'assistant') {
-                  updated[updated.length - 1] = { ...last, content: assistantContent }
-                }
-                return updated
-              })
-            } else if (payload['type'] === 'done' || payload['type'] === 'error') {
-              if (payload['type'] === 'error') {
-                setMessages((prev) => {
-                  const updated = [...prev]
-                  const last = updated[updated.length - 1]
-                  if (last?.role === 'assistant' && !last.content) {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      content: 'Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente.',
-                    }
-                  }
-                  return updated
-                })
-              }
-              break
-            }
-          }
+        const data = await response.json() as {
+          text: string
+          cacheName: string | null
+          contextCats: ContextCat[]
         }
+
+        if (data.cacheName) setCacheName(data.cacheName)
+        if (data.contextCats?.length) setContextCats(data.contextCats)
+
+        setMessages((prev) => {
+          const updated = [...prev]
+          const last = updated[updated.length - 1]
+          if (last?.role === 'assistant') {
+            updated[updated.length - 1] = { ...last, content: data.text }
+          }
+          return updated
+        })
       } catch (err) {
         if ((err as Error).name === 'AbortError') return
         setMessages((prev) => {

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { requireAuth, requireRole } from '../../middleware/auth.js'
 import { NotFoundError, ValidationError } from '@licitacat/shared/errors'
 import { generateEmbedding } from '@licitacat/ai/embeddings'
-import { streamLlm, createLlmCache } from '@licitacat/ai/llm'
+import { callLlm, createLlmCache, callLlmWithCache } from '@licitacat/ai/llm'
 import { CAT_CHAT_SYSTEM_PROMPT, buildCatChatContext, type CatContextItem } from '@licitacat/ai/prompts'
 import {
   CatParamsSchema,
@@ -386,49 +386,39 @@ export async function catsRoutes(app: FastifyInstance) {
     const contextBlock = buildCatChatContext(contextCats)
     const systemPrompt = CAT_CHAT_SYSTEM_PROMPT.replace('{CONTEXT_BLOCK}', contextBlock)
 
-    // 6. Streaming SSE
-    reply.hijack()
-    reply.raw.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    })
+    const messages = [...history, { role: 'user' as const, content: message }]
 
-    const metaEvent = {
-      type: 'meta',
+    // 6. Chamar Gemini (com cache se disponível, senão chamada normal)
+    let responseText: string
+    if (incomingCache) {
+      try {
+        const res = await callLlmWithCache({ cacheName: incomingCache, messages, max_tokens: 2048 })
+        responseText = res.text
+      } catch {
+        const res = await callLlm({ system: systemPrompt, messages, max_tokens: 2048 })
+        responseText = res.text
+      }
+    } else {
+      const res = await callLlm({ system: systemPrompt, messages, max_tokens: 2048 })
+      responseText = res.text
+    }
+
+    // 7. Tentar criar cache para próximos turnos (silencioso se < 32K tokens)
+    let newCacheName: string | undefined
+    if (!incomingCache && history.length === 0) {
+      try {
+        newCacheName = await createLlmCache({ systemInstruction: systemPrompt, ttlSeconds: 600 })
+      } catch { /* abaixo do mínimo de tokens */ }
+    }
+
+    return reply.send({
+      text: responseText,
+      cacheName: newCacheName ?? incomingCache ?? null,
       contextCats: contextCats.map((c) => ({
         id: c.id,
         numeroCat: c.numeroCat,
         empresaContratante: c.empresaContratante,
       })),
-    }
-    reply.raw.write(`data: ${JSON.stringify(metaEvent)}\n\n`)
-
-    const messages = [...history, { role: 'user' as const, content: message }]
-
-    try {
-      // 7. Tentar context cache no primeiro turno (fallback silencioso se < 32K tokens)
-      let activeCacheName = incomingCache
-      if (!activeCacheName && history.length === 0) {
-        try {
-          activeCacheName = await createLlmCache({ systemInstruction: systemPrompt, ttlSeconds: 600 })
-          reply.raw.write(`data: ${JSON.stringify({ type: 'cacheName', cacheName: activeCacheName })}\n\n`)
-        } catch {
-          // cache requer mínimo ~32K tokens — usar streamLlm padrão
-        }
-      }
-
-      const generator = streamLlm({ system: systemPrompt, messages })
-      for await (const chunk of generator) {
-        reply.raw.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`)
-      }
-      reply.raw.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro interno'
-      reply.raw.write(`data: ${JSON.stringify({ type: 'error', message: msg })}\n\n`)
-    } finally {
-      reply.raw.end()
-    }
+    })
   })
 }
