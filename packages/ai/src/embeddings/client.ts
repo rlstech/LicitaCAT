@@ -3,7 +3,8 @@ if (!apiKey) {
   throw new Error('GEMINI_API_KEY environment variable is required')
 }
 
-const EMBEDDING_MODEL = 'gemini-embedding-001'
+export const CURRENT_EMBEDDING_MODEL = 'gemini-embedding-2-preview'
+const EMBEDDING_MODEL = CURRENT_EMBEDDING_MODEL
 const EMBEDDING_DIMENSIONS = 768
 const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`
 

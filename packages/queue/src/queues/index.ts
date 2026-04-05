@@ -64,10 +64,24 @@ export const embeddingGenQueue = new Queue<EmbeddingGenJobData>(
   { connection, defaultJobOptions: retryJobOptions },
 )
 
+export interface ReembedBatchJobData {
+  batchSize?: number
+  entityTypes?: ('cat' | 'cat_item' | 'edital_requisito' | 'parcela_relevancia')[]
+}
+
+export const reembedBatchQueue = new Queue<ReembedBatchJobData>('reembed_batch', {
+  connection,
+  defaultJobOptions: { attempts: 1 },
+})
+
 export interface PncpSyncJobData {
   tenantId: string
   configId: string
   triggeredBy: 'schedule' | 'manual'
+}
+
+export interface PncpEnrichJobData {
+  batchSize?: number
 }
 
 export const pncpSyncQueue = new Queue<PncpSyncJobData>('pncp_sync', {
@@ -80,10 +94,37 @@ export const pncpSyncQueue = new Queue<PncpSyncJobData>('pncp_sync', {
   },
 })
 
+export const pncpEnrichQueue = new Queue<PncpEnrichJobData>('pncp_enrich', {
+  connection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential' as const, delay: 30000 },
+    removeOnComplete: { count: 50 },
+    removeOnFail: { count: 20 },
+  },
+})
+
+export interface PncpClassifyJobData {
+  batchSize?: number
+}
+
+export const pncpClassifyQueue = new Queue<PncpClassifyJobData>('pncp_classify', {
+  connection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential' as const, delay: 30000 },
+    removeOnComplete: { count: 50 },
+    removeOnFail: { count: 20 },
+  },
+})
+
 export const allQueues = [
   editalExtractionQueue,
   catExtractionQueue,
   crossingQueue,
   embeddingGenQueue,
+  reembedBatchQueue,
   pncpSyncQueue,
+  pncpEnrichQueue,
+  pncpClassifyQueue,
 ] as const

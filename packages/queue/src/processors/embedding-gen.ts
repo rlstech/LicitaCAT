@@ -1,7 +1,7 @@
 import { Worker, type Job } from 'bullmq'
 import { db } from '@licitacat/db'
 import { processingJobs } from '@licitacat/db/schema'
-import { generateEmbedding } from '@licitacat/ai/embeddings'
+import { generateEmbedding, CURRENT_EMBEDDING_MODEL } from '@licitacat/ai/embeddings'
 import { sql, eq } from 'drizzle-orm'
 import type { EmbeddingGenJobData } from '../queues/index.js'
 
@@ -29,19 +29,19 @@ async function processEmbeddingGen(job: Job<EmbeddingGenJobData>): Promise<void>
 
     if (entityType === 'edital_requisito') {
       await db.execute(
-        sql`UPDATE edital_requisitos SET embedding = ${embeddingLiteral}::vector WHERE id = ${entityId}`,
+        sql`UPDATE edital_requisitos SET embedding = ${embeddingLiteral}::vector, embedding_model = ${CURRENT_EMBEDDING_MODEL} WHERE id = ${entityId}`,
       )
     } else if (entityType === 'cat') {
       await db.execute(
-        sql`UPDATE cats SET embedding = ${embeddingLiteral}::vector WHERE id = ${entityId}`,
+        sql`UPDATE cats SET embedding = ${embeddingLiteral}::vector, embedding_model = ${CURRENT_EMBEDDING_MODEL} WHERE id = ${entityId}`,
       )
     } else if (entityType === 'cat_item') {
       await db.execute(
-        sql`UPDATE cat_itens SET embedding = ${embeddingLiteral}::vector WHERE id = ${entityId}`,
+        sql`UPDATE cat_itens SET embedding = ${embeddingLiteral}::vector, embedding_model = ${CURRENT_EMBEDDING_MODEL} WHERE id = ${entityId}`,
       )
     } else if (entityType === 'parcela_relevancia') {
       await db.execute(
-        sql`UPDATE req_parcelas_relevancia SET embedding = ${embeddingLiteral}::vector WHERE id = ${entityId}`,
+        sql`UPDATE req_parcelas_relevancia SET embedding = ${embeddingLiteral}::vector, embedding_model = ${CURRENT_EMBEDDING_MODEL} WHERE id = ${entityId}`,
       )
     }
 

@@ -3,8 +3,11 @@ import {
     createCatExtractionWorker,
     createCrossingWorker,
     createEmbeddingGenWorker,
+    createReembedBatchWorker,
     createPncpSyncWorker,
     createPncpPurgeWorker,
+    createPncpEnrichWorker,
+    createPncpClassifyWorker,
 } from './processors/index.js'
 import { registerPncpSchedules } from './scheduler.js'
 
@@ -14,16 +17,22 @@ const editalExtractionWorker = createEditalExtractionWorker()
 const catExtractionWorker = createCatExtractionWorker()
 const crossingWorker = createCrossingWorker()
 const embeddingGenWorker = createEmbeddingGenWorker()
+const reembedBatchWorker = createReembedBatchWorker()
 const pncpSyncWorker = createPncpSyncWorker()
 const pncpPurgeWorker = createPncpPurgeWorker()
+const pncpEnrichWorker = createPncpEnrichWorker()
+const pncpClassifyWorker = createPncpClassifyWorker()
 
 const workers = [
     editalExtractionWorker,
     catExtractionWorker,
     crossingWorker,
     embeddingGenWorker,
+    reembedBatchWorker,
     pncpSyncWorker,
     pncpPurgeWorker,
+    pncpEnrichWorker,
+    pncpClassifyWorker,
 ]
 
 // Logging

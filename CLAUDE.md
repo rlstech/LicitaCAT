@@ -19,13 +19,13 @@ Este arquivo é lido automaticamente pelo Claude Code em toda sessão.
 | Fila de jobs | BullMQ (Redis) |
 | Storage de arquivos | AWS S3 (ou compatível: MinIO para dev local) |
 | OCR | Google Document AI |
-| LLM principal | Anthropic Claude API (`claude-sonnet-4-6`) |
-| Embeddings | Voyage AI (`voyage-large-2`) |
+| LLM principal | Google Gemini API (`gemini-3-flash-preview`) |
+| Embeddings | Google Gemini Embeddings (`gemini-embedding-2-preview`, 768D, endpoint v1beta) |
 | Autenticação | Clerk |
 | Monorepo | Turborepo |
 | Testes | Vitest (unit) + Playwright (e2e) |
 | CI/CD | GitHub Actions |
-| Containerização | Docker + Docker Compose (dev) |
+| Containerização | Docker Swarm (produção) + Docker Compose (dev) |
 ---
 ## 3. Estrutura do monorepo
 ```
@@ -52,11 +52,11 @@ licitacat/
 - **`audit_logs`** — imutável (id, tenant_id, user_id, action, entity_type, entity_id, metadata JSONB)
 ### Editais
 - **`editais`** — (id, tenant_id, uploaded_by, file_name, file_url, page_count, pdf_type: copyable|scanned|mixed, status: uploaded|ocr_processing|extracting|review_pending|ready|error, orgao_licitante, numero_edital, modalidade, objeto, valor_estimado, data_abertura, ai_extraction_cost_usd, ocr_cost_usd)
-- **`edital_requisitos`** — (id, tenant_id, edital_id, lote, categoria, descricao, trecho_original, pagina_referencia, quantitativo_exigido, unidade, ai_confidence_score 0-100, status: ai_extracted|human_approved|human_edited|human_rejected, edited_by, **embedding VECTOR(1536)**)
+- **`edital_requisitos`** — (id, tenant_id, edital_id, lote, categoria, descricao, trecho_original, pagina_referencia, quantitativo_exigido, unidade, ai_confidence_score 0-100, status: ai_extracted|human_approved|human_edited|human_rejected, edited_by, **embedding VECTOR(768)**, embedding_model text)
 ### Acervo de CATs
 - **`profissionais_tecnicos`** — (id, tenant_id, nome, numero_crea_cau, conselho: CREA|CAU, uf_registro, ativo)
-- **`cats`** — (id, tenant_id, profissional_id, uploaded_by, file_name, file_url, file_type: pdf_scanned|pdf_copyable|excel|manual, numero_cat, empresa_contratante, tipo_obra_servico, descricao_tecnica, quantitativo_valor, quantitativo_unidade, data_inicio, data_conclusao, status_extracao, ai_confidence_score, **embedding VECTOR(1536)**, ativo)
-- **`cat_itens`** — (id, tenant_id, cat_id, numero_item, descricao, unidade, quantidade NUMERIC(15,4), origem: ai_extracted|human_added|excel_imported, ai_confidence_score, **embedding VECTOR(1536)**, ordem)
+- **`cats`** — (id, tenant_id, profissional_id, uploaded_by, file_name, file_url, file_type: pdf_scanned|pdf_copyable|excel|manual, numero_cat, empresa_contratante, tipo_obra_servico, descricao_tecnica, quantitativo_valor, quantitativo_unidade, data_inicio, data_conclusao, status_extracao, ai_confidence_score, **embedding VECTOR(768)**, embedding_model text, **search_vector tsvector GENERATED**, ativo)
+- **`cat_itens`** — (id, tenant_id, cat_id, numero_item, descricao, unidade, quantidade NUMERIC(15,4), origem: ai_extracted|human_added|excel_imported, ai_confidence_score, **embedding VECTOR(768)**, embedding_model text, **search_vector tsvector GENERATED**, ordem)
 ### Cruzamento
 - **`crossings`** — (id, tenant_id, edital_id, triggered_by, status, score_aderencia 0-100, total_requisitos, requisitos_atendidos, requisitos_com_ressalva, requisitos_gap, recomendacao: participar|participar_com_ressalvas|nao_participar, recomendacao_justificativa, ai_cost_usd, processing_time_seconds)
 - **`crossing_items`** — (id, tenant_id, crossing_id, requisito_id, resultado: atendido|atendido_parcialmente|gap, ai_justificativa, score_similaridade_max, human_override, human_override_by, human_override_note)
@@ -65,10 +65,13 @@ licitacat/
 - **`processing_jobs`** — (id, tenant_id, job_type: ocr|edital_extraction|cat_extraction|crossing|embedding_gen, entity_type, entity_id, status: queued|running|completed|failed|retrying, attempt_count max 3, error_message, started_at, completed_at, cost_usd)
 ### Índices críticos (além de PKs/FKs)
 ```sql
--- pgvector HNSW para busca semântica
+-- pgvector HNSW para busca semântica (768 dimensões, gemini-embedding-2-preview)
 CREATE INDEX ON edital_requisitos USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX ON cats             USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX ON cat_itens        USING hnsw (embedding vector_cosine_ops);
+-- FTS (migration 0009) — stemming português via unaccent + to_tsvector
+CREATE INDEX cats_fts_idx     ON cats      USING gin (search_vector);
+CREATE INDEX cat_itens_fts_idx ON cat_itens USING gin (search_vector);
 -- Compostos para queries de tenant
 CREATE INDEX ON edital_requisitos (tenant_id, edital_id);
 CREATE INDEX ON cat_itens         (tenant_id, cat_id);
@@ -100,10 +103,13 @@ CREATE INDEX ON audit_logs        (tenant_id, created_at);
 - Todo job deve: (1) atualizar `processing_jobs.status` para `running` no início, (2) registrar custo de IA em `processing_jobs.cost_usd` ao final, (3) tratar erros com retry automático até `attempt_count = 3`
 - Jobs de IA nunca fazem chamadas síncronas — sempre via fila
 ### IA / LLM
-- Todas as chamadas ao Claude API ficam em `packages/ai/src/`
+- Todas as chamadas ao Gemini API ficam em `packages/ai/src/`
+- LLM client: `packages/ai/src/llm/client.ts` — funções `callLlm`, `callLlmWithCache`, `createLlmCache`
+- Embedding client: `packages/ai/src/embeddings/client.ts` — modelo `gemini-embedding-2-preview`, 768D, endpoint `v1beta`
 - Prompts são arquivos `.ts` separados em `packages/ai/src/prompts/` — nunca inline no código
 - Toda chamada LLM deve: logar tokens consumidos, calcular custo estimado em USD e persistir em `processing_jobs.cost_usd`
 - Respostas do LLM que precisam ser estruturadas usam XML tags de output — nunca confiar em JSON puro sem validação Zod
+- Context caching disponível via `createLlmCache` / `callLlmWithCache` — requer mínimo ~32K tokens para ser efetivo no Gemini
 ---
 ## 6. Segurança — regras inegociáveis
 - **Nunca** expor `tenant_id` de outros tenants em nenhuma resposta de API
@@ -126,9 +132,8 @@ AWS_SECRET_ACCESS_KEY=
 # Auth
 CLERK_SECRET_KEY=
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-# IA
-ANTHROPIC_API_KEY=
-VOYAGE_API_KEY=
+# IA (Google)
+GEMINI_API_KEY=                       # LLM (gemini-3-flash-preview) + Embeddings (gemini-embedding-2-preview)
 GOOGLE_DOCUMENT_AI_PROJECT_ID=
 GOOGLE_DOCUMENT_AI_PROCESSOR_ID=
 GOOGLE_APPLICATION_CREDENTIALS=
@@ -160,6 +165,15 @@ pnpm dev                      # Roda api + web em paralelo (Turborepo)
 pnpm db:migrate               # Executa migrations pendentes
 pnpm db:studio                # Abre Drizzle Studio
 pnpm db:seed                  # Popula dados de teste
+# Aplicar migration SQL diretamente (produção usa psql, não Drizzle migrate)
+docker exec <postgres_container> psql -U licitacat -d licitacat < packages/db/migrations/XXXX_nome.sql
+# Re-embedding de todos os embeddings existentes (após trocar modelo)
+docker cp direct-reembed.mjs <worker_container>:/app/direct-reembed.mjs
+docker exec <worker_container> node /app/direct-reembed.mjs
+# Deploy em produção (Docker Swarm)
+docker build -f apps/api/Dockerfile -t licitacat-api:latest .
+docker service update --force licitacat_worker   # worker
+docker service update --force licitacat_api      # API (se necessário)
 # Testes
 pnpm test                     # Vitest (todos os packages)
 pnpm test:e2e                 # Playwright
@@ -172,6 +186,9 @@ pnpm build                    # Build de produção (todos os apps)
 2. **Drizzle ORM** — não Prisma (melhor suporte a pgvector e tipos customizados)
 3. **BullMQ** para fila — não SQS no MVP (evitar dependência de AWS para dev local)
 4. **Clerk** para auth — não NextAuth/Auth.js (suporte nativo a multi-tenancy via Organizations)
-5. **Voyage AI** para embeddings — não OpenAI (melhor performance em textos técnicos em português)
+5. **Google Gemini** para LLM e embeddings — modelo `gemini-3-flash-preview` (LLM) + `gemini-embedding-2-preview` (embeddings 768D, v1beta endpoint). Voyage AI foi descontinuado neste projeto.
 6. **Matching em dois níveis**: embeddings de `cats.descricao_tecnica` E de `cat_itens.descricao` — o cruzamento deve tentar ambos e registrar `nivel_match` em `crossing_item_cats`
 7. **Revisão humana obrigatória** para requisitos com `ai_confidence_score < 70` antes de liberar cruzamento
+8. **Motor de busca híbrido V2**: pgvector (semântico) + FTS PostgreSQL (`plainto_tsquery('portuguese', ...)`) mesclados via **Reciprocal Rank Fusion (RRF)** — não usar regex `~*` para keyword search
+9. **Tracking de modelo de embedding**: coluna `embedding_model text` em `cats`, `cat_itens`, `edital_requisitos`, `req_parcelas_relevancia` — queries de busca semântica filtram por `embedding_model = CURRENT_EMBEDDING_MODEL` para evitar mistura de modelos
+10. **Normalização de unidades** no motor de cruzamento: converter km→M, ha→M², ton→KG etc. antes de comparar quantitativos — tabela `UNIT_CONVERSIONS` em `packages/queue/src/processors/crossing.ts`
