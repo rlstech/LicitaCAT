@@ -11,10 +11,12 @@ export const PncpCacheBuscarQuerySchema = z.object({
   valorMax:            z.coerce.number().min(0).optional(),
   dataInicial:         z.string().regex(/^\d{8}$/).optional(),  // YYYYMMDD
   dataFinal:           z.string().regex(/^\d{8}$/).optional(),
+  tipoBusca:           z.enum(['publicacao', 'proposta']).default('publicacao'),
   page:                z.coerce.number().int().min(1).default(1),
   limit:               z.coerce.number().int().min(10).max(100).default(20),
-  sortBy:              z.enum(['dataPublicacaoPncp', 'valorTotalEstimado', 'dataAberturaProposta']).default('dataPublicacaoPncp'),
+  sortBy:              z.enum(['dataPublicacaoPncp', 'valorTotalEstimado', 'dataAberturaProposta', 'dataEncerramentoProposta']).default('dataPublicacaoPncp'),
   sortOrder:           z.enum(['asc', 'desc']).default('desc'),
+  segmentos:           z.string().optional(),              // pipe-separated: "Pavimentação, drenagem|Supervisão de obras"
 })
 
 export type PncpCacheBuscarQuery = z.infer<typeof PncpCacheBuscarQuerySchema>

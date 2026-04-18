@@ -1,13 +1,14 @@
 FROM node:20-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+RUN npm install -g pnpm@9.0.0
 
 WORKDIR /app
 
 COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/ai/package.json ./packages/ai/
+COPY packages/auth/package.json ./packages/auth/
 COPY packages/db/package.json ./packages/db/
 COPY packages/queue/package.json ./packages/queue/
 COPY packages/shared/package.json ./packages/shared/

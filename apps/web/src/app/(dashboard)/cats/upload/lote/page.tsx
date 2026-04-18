@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
 import Link from 'next/link'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
@@ -29,7 +29,7 @@ interface Profissional {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function UploadCatLotePage() {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const [profissionais, setProfissionais] = useState<Profissional[]>([])
   const [selectedProfissional, setSelectedProfissional] = useState('')
   const [queue, setQueue] = useState<QueueFile[]>([])

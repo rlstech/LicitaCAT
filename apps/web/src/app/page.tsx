@@ -1,12 +1,7 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@clerk/nextjs/server'
 
+// O middleware já cuida do redirect para /sign-in se não houver sessão.
+// Esta página apenas redireciona usuários autenticados para /dashboard.
 export default function HomePage() {
-  const { userId } = auth()
-
-  if (userId) {
-    redirect('/dashboard')
-  } else {
-    redirect('/sign-in')
-  }
+  redirect('/dashboard')
 }

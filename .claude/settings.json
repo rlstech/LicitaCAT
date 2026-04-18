@@ -1,3 +1,8 @@
 {
-  "language": "portuguese"
+  "language": "portuguese",
+  "statusLine": {
+    "type": "command",
+    "command": "echo 'Claude Code - Pronto para usar'"
+  },
+  "spinnerTipsEnabled": false
 }

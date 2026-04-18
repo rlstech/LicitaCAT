@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
 import { fetchMunicipiosByUfs, type Municipio } from '@/lib/ibge'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
@@ -89,6 +89,28 @@ const TIPOS_INSTRUMENTO = [
   { id: 3, nome: 'Ato que institui o credenciamento' },
 ]
 
+const SEGMENTOS_ENGENHARIA = [
+  { value: 'Reformas, edificações e demolição', label: 'Reformas/Edificações' },
+  { value: 'Pavimentação, drenagem', label: 'Pavimentação/Drenagem' },
+  { value: 'Serviços de terraplanagem', label: 'Terraplanagem' },
+  { value: 'Poços tubulares, artesianos, perfuratriz, mineração, escavação', label: 'Poços/Mineração' },
+  { value: 'Supervisão de obras', label: 'Supervisão' },
+  { value: 'Projetos de engenharia e arquitetura, maquetes', label: 'Projetos/Arquitetura' },
+] as const
+
+const SEGMENTO_LABEL_MAP: Record<string, string> = Object.fromEntries(
+  SEGMENTOS_ENGENHARIA.map(s => [s.value, s.label]),
+)
+
+const SEGMENTO_COLOR_MAP: Record<string, { bg: string; text: string }> = {
+  'Reformas, edificações e demolição': { bg: 'bg-amber-100', text: 'text-amber-800' },
+  'Pavimentação, drenagem': { bg: 'bg-blue-100', text: 'text-blue-800' },
+  'Serviços de terraplanagem': { bg: 'bg-orange-100', text: 'text-orange-800' },
+  'Poços tubulares, artesianos, perfuratriz, mineração, escavação': { bg: 'bg-violet-100', text: 'text-violet-800' },
+  'Supervisão de obras': { bg: 'bg-teal-100', text: 'text-teal-800' },
+  'Projetos de engenharia e arquitetura, maquetes': { bg: 'bg-indigo-100', text: 'text-indigo-800' },
+}
+
 const ESFERA_MAP: Record<string, string> = { F: 'Federal', E: 'Estadual', M: 'Municipal', D: 'Distrital' }
 const PODER_MAP: Record<string, string>  = { E: 'Executivo', L: 'Legislativo', J: 'Judiciário', N: 'Sem poder' }
 
@@ -115,6 +137,9 @@ interface PncpContratacao {
   modoDisputaId?: number
   modoDisputaNome?: string
   fontesOrcamentarias?: Array<{ id: number; nome: string }>
+  segmentos?: string[]
+  classificacaoConfianca?: string | null
+  classificacaoMetodo?: string | null
   orgaoEntidade: { cnpj: string; razaoSocial?: string; nome?: string; esferaId?: string; poderId?: string }
   unidadeOrgao?: { ufSigla?: string; municipioNome?: string; nomeUnidade?: string }
   linkSistemaOrigem?: string
@@ -285,7 +310,7 @@ function DetalheDrawer({
   onImportar: (item: PncpContratacao) => void
   importing: boolean
 }) {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const [tab, setTab] = useState<Tab>('dados')
   const [detalhe, setDetalhe] = useState<PncpDetalhe | null>(null)
   const [itens, setItens] = useState<PncpItem[] | null>(null)
@@ -301,7 +326,7 @@ function DetalheDrawer({
     sequencial: item.sequencialCompra,
   })
 
-  useState(() => {
+  useEffect(() => {
     const load = async () => {
       try {
         const token = await getToken()
@@ -317,7 +342,8 @@ function DetalheDrawer({
       }
     }
     load()
-  })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function loadItens() {
     if (itens !== null) return
@@ -666,7 +692,7 @@ function DetalheDrawer({
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function BuscarPncpPage() {
   const router = useRouter()
-  const { getToken } = useAuth()
+  const getToken = useToken()
 
   // ── Filter state ──
   const [tipoBusca, setTipoBusca]   = useState<TipoBusca>('proposta')
@@ -681,6 +707,7 @@ export default function BuscarPncpPage() {
   const [tipoInstrumento, setTipoInstrumento]     = useState('')
   const [palavrasChave, setPalavrasChave] = useState<string[]>([])
   const [palavraInput, setPalavraInput]   = useState('')
+  const [selectedSegmentos, setSelectedSegmentos] = useState<string[]>([])
   const [valorMode, setValorMode]   = useState<'qualquer' | 'acima' | 'abaixo' | 'entre'>('qualquer')
   const [valorMin, setValorMin]     = useState('')
   const [valorMax, setValorMax]     = useState('')
@@ -694,14 +721,17 @@ export default function BuscarPncpPage() {
   // ── Dropdown open state ──
   const [ufsOpen, setUfsOpen]           = useState(false)
   const [municipiosOpen, setMunicipiosOpen] = useState(false)
+  const [segmentosOpen, setSegmentosOpen] = useState(false)
   const ufsRef       = useRef<HTMLDivElement>(null)
   const municipiosRef = useRef<HTMLDivElement>(null)
+  const segmentosRef  = useRef<HTMLDivElement>(null)
 
   // ── Fechar dropdowns ao clicar fora ──
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ufsRef.current && !ufsRef.current.contains(e.target as Node)) setUfsOpen(false)
       if (municipiosRef.current && !municipiosRef.current.contains(e.target as Node)) setMunicipiosOpen(false)
+      if (segmentosRef.current && !segmentosRef.current.contains(e.target as Node)) setSegmentosOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -825,7 +855,7 @@ export default function BuscarPncpPage() {
 
   function limpar() {
     setPalavrasChave([]); setPalavraInput(''); setModalidade('')
-    setSelectedUfs([]); setEsfera('')
+    setSelectedUfs([]); setSelectedSegmentos([]); setEsfera('')
     setPoder(''); setFonteOrcamentaria(''); setTipoInstrumento('')
     setValorMode('qualquer'); setValorMin(''); setValorMax('')
     setSelectedMunicipios([]); setMunicipiosSearch('')
@@ -842,7 +872,8 @@ export default function BuscarPncpPage() {
     try {
       const token = await getToken()
       const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-      const sp = new URLSearchParams({ page: String(page), limit: String(ITEMS_PER_PAGE), sortBy: 'dataPublicacaoPncp', sortOrder: 'desc' })
+      const sortByCol = tipoBusca === 'proposta' ? 'dataEncerramentoProposta' : 'dataPublicacaoPncp'
+      const sp = new URLSearchParams({ page: String(page), limit: String(ITEMS_PER_PAGE), sortBy: sortByCol, sortOrder: 'desc', tipoBusca })
       if (dataInicialInput) sp.set('dataInicial', toYYYYMMDD(dataInicialInput))
       if (dataFinalInput)   sp.set('dataFinal', toYYYYMMDD(dataFinalInput))
       if (modalidade)       sp.set('modalidade', modalidade)
@@ -857,6 +888,7 @@ export default function BuscarPncpPage() {
       const maxVal = valorMode !== 'qualquer' && valorMode !== 'acima' ? parseVal(valorMax) : null
       if (minVal !== null) sp.set('valorMin', String(minVal))
       if (maxVal !== null) sp.set('valorMax', String(maxVal))
+      if (selectedSegmentos.length > 0) sp.set('segmentos', selectedSegmentos.join('|'))
 
       const res = await fetch(`${API_URL}/api/pncp-cache/buscar?${sp.toString()}`, { headers })
       if (!res.ok) throw new Error(`Erro ${res.status}`)
@@ -1302,6 +1334,60 @@ export default function BuscarPncpPage() {
             </div>
           </div>
 
+          {/* Segmentos de engenharia */}
+          <div className="flex flex-col gap-1.5" ref={segmentosRef}>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-brand-400">
+              Segmentos{selectedSegmentos.length > 0 && <span className="ml-1 text-brand-600">({selectedSegmentos.length})</span>}
+            </label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setSegmentosOpen(v => !v)}
+                className="w-full text-left bg-white border border-outline-variant/40 rounded-lg px-3 py-2 text-sm text-brand-900 focus:ring-1 focus:ring-brand-600 outline-none flex items-center justify-between"
+              >
+                <span className={selectedSegmentos.length === 0 ? 'text-brand-400/50' : 'truncate'}>
+                  {selectedSegmentos.length === 0
+                    ? 'Todos os segmentos'
+                    : selectedSegmentos.map(s => SEGMENTO_LABEL_MAP[s] ?? s).join(', ')}
+                </span>
+                <svg className={`h-4 w-4 text-brand-400 transition-transform flex-shrink-0 ${segmentosOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+              </button>
+              {segmentosOpen && (
+                <div className="absolute z-20 mt-1 w-full bg-white border border-outline-variant/30 rounded-xl shadow-lg overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-outline-variant/20">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSegmentos(SEGMENTOS_ENGENHARIA.map(s => s.value))}
+                      className="text-[10px] font-bold text-brand-600 hover:text-brand-800"
+                    >Selecionar todos</button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSegmentos([])}
+                      className="text-[10px] font-bold text-brand-400 hover:text-brand-600"
+                    >Limpar</button>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto py-1">
+                    {SEGMENTOS_ENGENHARIA.map(seg => (
+                      <label key={seg.value} className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-surface-low cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedSegmentos.includes(seg.value)}
+                          onChange={e => {
+                            setSelectedSegmentos(prev =>
+                              e.target.checked ? [...prev, seg.value] : prev.filter(s => s !== seg.value)
+                            )
+                          }}
+                          className="h-3.5 w-3.5 rounded text-brand-600 border-outline-variant/40"
+                        />
+                        <span className="text-xs text-brand-900">{seg.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Palavras-chave (multi-tag) */}
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold uppercase tracking-wider text-brand-400">Palavras-chave</label>
@@ -1416,7 +1502,7 @@ export default function BuscarPncpPage() {
                       { label: 'Modalidade',     cls: '' },
                       { label: 'Local',          cls: '' },
                       { label: 'Valor Estimado', cls: 'text-right' },
-                      { label: tipoBusca === 'proposta' ? 'Abertura' : 'Publicação', cls: '' },
+                      { label: tipoBusca === 'proposta' ? 'Prazo Propostas' : 'Publicação', cls: '' },
                       { label: 'Ações',          cls: 'text-center' },
                     ].map(({ label, cls }) => (
                       <th key={label} className={`px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-brand-400 ${cls}`}>
@@ -1438,12 +1524,20 @@ export default function BuscarPncpPage() {
                       >
                         <td className="px-4 py-4 max-w-xs">
                           <p className="text-sm font-medium text-brand-900 line-clamp-2">{item.objetoCompra}</p>
-                          <div className="mt-1 flex items-center gap-1.5">
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                             <span className="text-[10px] text-brand-400/70">{item.anoCompra}/{item.sequencialCompra}</span>
                             <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${badge.bg} ${badge.text}`}>
                               <span className={`h-1 w-1 rounded-full ${badge.dot}`} />
                               {item.situacaoCompraNome.length > 18 ? item.situacaoCompraNome.slice(0, 16) + '…' : item.situacaoCompraNome}
                             </span>
+                            {(item.segmentos ?? []).map(seg => {
+                              const cor = SEGMENTO_COLOR_MAP[seg] ?? { bg: 'bg-gray-100', text: 'text-gray-700' }
+                              return (
+                                <span key={seg} className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold ${cor.bg} ${cor.text}`}>
+                                  {SEGMENTO_LABEL_MAP[seg] ?? seg}
+                                </span>
+                              )
+                            })}
                           </div>
                         </td>
                         <td className="px-4 py-4">
@@ -1460,7 +1554,7 @@ export default function BuscarPncpPage() {
                         </td>
                         <td className="px-4 py-4 text-[11px] text-brand-400 whitespace-nowrap">
                           {tipoBusca === 'proposta'
-                            ? formatDate(item.dataAberturaProposta ?? item.dataPublicacaoPncp)
+                            ? formatDate(item.dataEncerramentoProposta ?? item.dataAberturaProposta ?? item.dataPublicacaoPncp)
                             : formatDate(item.dataPublicacaoPncp)}
                         </td>
                         <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>

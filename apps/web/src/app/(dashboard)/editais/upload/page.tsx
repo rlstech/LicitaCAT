@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -11,7 +11,7 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024
 type UploadStage = 'idle' | 'presigning' | 'uploading' | 'confirming' | 'done' | 'error'
 
 export default function UploadEditalPage() {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const router = useRouter()
 
   const [file, setFile] = useState<File | null>(null)

@@ -1,5 +1,5 @@
 import { db } from '@licitacat/db'
-import { users } from '@licitacat/db/schema'
+import { users, baUser } from '@licitacat/db/schema'
 import { eq, and, isNull } from 'drizzle-orm'
 import type { UserRole } from '@licitacat/shared/types'
 
@@ -73,6 +73,22 @@ export async function updateUser(
       createdAt: users.createdAt,
     })
   return updated
+}
+
+export async function deleteUser(tenantId: string, id: string) {
+  // Busca o auth_provider_id antes de deletar para limpar ba_user
+  const target = await db.query.users.findFirst({
+    where: and(eq(users.tenantId, tenantId), eq(users.id, id)),
+    columns: { authProviderId: true },
+  })
+
+  // Remove da tabela de negócio
+  await db.delete(users).where(and(eq(users.tenantId, tenantId), eq(users.id, id)))
+
+  // Remove da tabela do Better Auth (cascata apaga sessions e accounts)
+  if (target?.authProviderId && !target.authProviderId.startsWith('user_')) {
+    await db.delete(baUser).where(eq(baUser.id, target.authProviderId))
+  }
 }
 
 export async function linkAuthProvider(id: string, authProviderId: string) {

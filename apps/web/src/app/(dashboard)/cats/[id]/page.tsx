@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
+import { useSession } from '@/lib/auth-client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -77,7 +78,8 @@ function MetaCard({ label, value }: { label: string; value: string | null | unde
 }
 
 export default function CatDetailPage() {
-  const { getToken, isLoaded } = useAuth()
+  const getToken = useToken()
+  const { isPending } = useSession()
   const params = useParams()
   const router = useRouter()
   const catId = params.id as string
@@ -118,13 +120,13 @@ export default function CatDetailPage() {
   }, [getToken, catId])
 
   useEffect(() => {
-    if (!isLoaded) return
+    if (!!isPending) return
     fetchData()
     const interval = setInterval(() => {
       if (!cat || cat.statusExtracao === 'processing') fetchData()
     }, 5000)
     return () => clearInterval(interval)
-  }, [fetchData, isLoaded, cat?.statusExtracao])
+  }, [fetchData, !isPending, cat?.statusExtracao])
 
   async function handleDeleteCat() {
     setDeleting(true)

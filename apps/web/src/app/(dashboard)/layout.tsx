@@ -1,6 +1,7 @@
 'use client'
 
-import { UserButton, useUser } from '@clerk/nextjs'
+import { useSession } from '@/lib/auth-client'
+import { UserMenu } from '@/components/user-menu'
 import Link from 'next/link'
 import { NavLinks } from '@/components/nav-links'
 import { CommandPalette } from '@/components/command-palette'
@@ -10,7 +11,8 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { user } = useUser()
+  const { data: session } = useSession()
+  const name = session?.user?.name ?? 'Usuário'
 
   function openCommandPalette() {
     const e = new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true })
@@ -97,11 +99,11 @@ export default function DashboardLayout({
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-slate-700 leading-none">
-                  {user?.firstName ?? 'Usuário'}
+                  {name}
                 </p>
                 <p className="text-[11px] text-slate-400 leading-none mt-0.5">Administrador</p>
               </div>
-              <UserButton afterSignOutUrl="/sign-in" />
+              <UserMenu />
             </div>
           </div>
         </header>

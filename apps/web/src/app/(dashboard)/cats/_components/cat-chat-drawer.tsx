@@ -28,12 +28,68 @@ interface CatChatDrawerProps {
   getToken: () => Promise<string | null>
 }
 
+function parseTableCells(line: string): string[] {
+  return line
+    .split('|')
+    .map((c) => c.trim())
+    .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
+}
+
+function isSeparatorRow(cells: string[]): boolean {
+  return cells.every((c) => /^[-: ]+$/.test(c))
+}
+
+function renderTable(tableLines: string[], key: number): React.ReactNode {
+  const rows = tableLines.map(parseTableCells)
+  const headerRow = rows[0] ?? []
+  const dataRows = rows.slice(2).filter((cells) => !isSeparatorRow(cells))
+
+  return (
+    <div key={key} className="my-2 overflow-x-auto rounded-lg border border-slate-200">
+      <table className="w-full text-xs">
+        <thead className="bg-[#003746]/10">
+          <tr>
+            {headerRow.map((cell, ci) => (
+              <th key={ci} className="px-3 py-2 text-left font-semibold text-[#003746]">
+                {cell}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {dataRows.map((cells, ri) => (
+            <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+              {cells.map((cell, ci) => (
+                <td key={ci} className="px-3 py-1.5 text-slate-700">
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function renderMarkdown(text: string, catMap: Map<string, string>): React.ReactNode {
   const lines = text.split('\n')
   const nodes: React.ReactNode[] = []
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? ''
+
+    // Markdown table — collect consecutive table lines
+    if (line.startsWith('|')) {
+      const tableLines: string[] = []
+      while (i < lines.length && (lines[i] ?? '').startsWith('|')) {
+        tableLines.push(lines[i] ?? '')
+        i++
+      }
+      i-- // compensate for the outer loop increment
+      nodes.push(renderTable(tableLines, nodes.length))
+      continue
+    }
 
     // List item
     if (line.startsWith('- ') || line.startsWith('* ')) {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -18,7 +18,7 @@ interface Profissional {
 type UploadStage = 'idle' | 'presigning' | 'uploading' | 'confirming' | 'done' | 'error'
 
 export default function UploadCatPage() {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const router = useRouter()
 
   const [profissionais, setProfissionais] = useState<Profissional[]>([])

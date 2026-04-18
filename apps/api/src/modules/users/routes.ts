@@ -8,6 +8,7 @@ import {
   findUserByEmail,
   createInvitedUser,
   updateUser,
+  deleteUser,
 } from './repository.js'
 
 export async function usersRoutes(app: FastifyInstance) {
@@ -95,6 +96,26 @@ export async function usersRoutes(app: FastifyInstance) {
       if (!target) throw new NotFoundError('User not found')
 
       await updateUser(request.tenantId, params.data.id, { active: false })
+      return reply.status(204).send()
+    },
+  )
+
+  // DELETE /api/users/:id/permanent — hard delete (admin only)
+  app.delete(
+    '/:id/permanent',
+    { preHandler: requireRole('admin') },
+    async (request, reply) => {
+      const params = UserParamsSchema.safeParse(request.params)
+      if (!params.success) throw new ValidationError('Invalid params', params.error.flatten())
+
+      if (params.data.id === request.userId) {
+        throw new ForbiddenError('Você não pode excluir seu próprio usuário.')
+      }
+
+      const target = await findUserById(request.tenantId, params.data.id)
+      if (!target) throw new NotFoundError('User not found')
+
+      await deleteUser(request.tenantId, params.data.id)
       return reply.status(204).send()
     },
   )

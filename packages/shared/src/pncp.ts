@@ -26,6 +26,7 @@ export interface PncpContratacao {
   valorTotalEstimado: number | null
   dataPublicacaoPncp: string
   dataAberturaProposta?: string | null
+  dataEncerramentoProposta?: string | null
   modalidadeId: number
   modalidadeNome: string
   situacaoCompraId?: number | null

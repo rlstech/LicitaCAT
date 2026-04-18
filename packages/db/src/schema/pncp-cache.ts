@@ -33,13 +33,23 @@ export const pncpCache = pgTable('pncp_cache', {
   objeto:                 text('objeto'),
   valorTotalEstimado:     numeric('valor_total_estimado', { precision: 15, scale: 2 }),
   dataPublicacaoPncp:     date('data_publicacao_pncp').notNull(),
-  dataAberturaProposta:   timestamp('data_abertura_proposta', { withTimezone: true }),
+  dataAberturaProposta:       timestamp('data_abertura_proposta', { withTimezone: true }),
+  dataEncerramentoProposta:   timestamp('data_encerramento_proposta', { withTimezone: true }),
+  enrichStatus:               varchar('enrich_status', { length: 20 }).notNull().default('pending'),
   situacaoCompraId:       integer('situacao_compra_id'),
   situacaoCompraNome:     varchar('situacao_compra_nome', { length: 100 }),
   linkSistemaOrigem:      text('link_sistema_origem'),
 
   // Resposta bruta completa do PNCP
   rawData: jsonb('raw_data').notNull(),
+
+  // Classificação por segmentos
+  segmentos:                  text('segmentos').array().default(sql`'{}'`),
+  classificacaoConfianca:     varchar('classificacao_confianca', { length: 10 }),
+  classificacaoMetodo:        varchar('classificacao_metodo', { length: 15 }),
+  classificacaoJustificativa: text('classificacao_justificativa'),
+  classificacaoKeywords:      text('classificacao_keywords').array().default(sql`'{}'`),
+  classificadoAt:             timestamp('classificado_at', { withTimezone: true }),
 
   // Metadados de sync
   syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
@@ -51,6 +61,7 @@ export const pncpCache = pgTable('pncp_cache', {
   municipioIdx:    index('pncp_cache_municipio_idx').on(table.codigoMunicipioIbge),
   valorIdx:        index('pncp_cache_valor_idx').on(table.valorTotalEstimado),
   syncedAtIdx:     index('pncp_cache_synced_at_idx').on(table.syncedAt),
+  dataEncIdx:      index('pncp_cache_data_enc_idx').on(table.dataEncerramentoProposta),
 }))
 
 export type PncpCacheRecord = typeof pncpCache.$inferSelect

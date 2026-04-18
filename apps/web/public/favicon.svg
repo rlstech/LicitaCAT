@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Background -->
+  <rect width="32" height="32" rx="7" fill="#003746"/>
+  <!-- Architectural angle / square tool (top-left) -->
+  <path d="M7 7 L7 18 L10 18 L10 10 L18 10 L18 7 Z" fill="#85c0d7" opacity="0.9"/>
+  <!-- Document body (bottom-right) -->
+  <rect x="13" y="13" width="12" height="13" rx="1.5" fill="white" opacity="0.92"/>
+  <!-- Document fold corner -->
+  <path d="M21 13 L25 17 L21 17 Z" fill="#003746" opacity="0.25"/>
+  <path d="M21 13 L21 17 L25 17" fill="none" stroke="#003746" stroke-width="0.5" opacity="0.3"/>
+  <!-- Document lines -->
+  <rect x="15" y="19" width="7" height="1.2" rx="0.6" fill="#003746" opacity="0.25"/>
+  <rect x="15" y="21.5" width="5" height="1.2" rx="0.6" fill="#003746" opacity="0.25"/>
+</svg>

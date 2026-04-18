@@ -1,6 +1,6 @@
 import { db } from '@licitacat/db'
 import { pncpCache, pncpSyncConfig } from '@licitacat/db/schema'
-import { and, gte, lte, ilike, inArray, eq, desc, asc, count, sql } from 'drizzle-orm'
+import { and, gte, lte, ilike, inArray, eq, desc, asc, count, sql, arrayOverlaps } from 'drizzle-orm'
 import type { PncpCacheBuscarQuery, PncpSyncConfigBody } from './schema.js'
 
 export async function searchPncpCache(params: PncpCacheBuscarQuery) {
@@ -28,31 +28,52 @@ export async function searchPncpCache(params: PncpCacheBuscarQuery) {
   if (params.valorMax != null) {
     conditions.push(lte(pncpCache.valorTotalEstimado, String(params.valorMax)))
   }
-  if (params.dataInicial) {
-    const d = `${params.dataInicial.slice(0, 4)}-${params.dataInicial.slice(4, 6)}-${params.dataInicial.slice(6)}`
-    conditions.push(gte(pncpCache.dataPublicacaoPncp, d))
-  }
-  if (params.dataFinal) {
-    const d = `${params.dataFinal.slice(0, 4)}-${params.dataFinal.slice(4, 6)}-${params.dataFinal.slice(6)}`
-    conditions.push(lte(pncpCache.dataPublicacaoPncp, d))
+  if (params.tipoBusca === 'proposta') {
+    // Filtrar pela data de encerramento (prazo real), com fallback para abertura de proposta
+    const dateCol = sql`COALESCE(${pncpCache.dataEncerramentoProposta}, ${pncpCache.dataAberturaProposta})`
+    if (params.dataInicial) {
+      const d = `${params.dataInicial.slice(0, 4)}-${params.dataInicial.slice(4, 6)}-${params.dataInicial.slice(6)}`
+      conditions.push(sql`${dateCol} >= ${d}::timestamptz`)
+    }
+    if (params.dataFinal) {
+      const d = `${params.dataFinal.slice(0, 4)}-${params.dataFinal.slice(4, 6)}-${params.dataFinal.slice(6)}T23:59:59`
+      conditions.push(sql`${dateCol} <= ${d}::timestamptz`)
+    }
+  } else {
+    if (params.dataInicial) {
+      const d = `${params.dataInicial.slice(0, 4)}-${params.dataInicial.slice(4, 6)}-${params.dataInicial.slice(6)}`
+      conditions.push(gte(pncpCache.dataPublicacaoPncp, d))
+    }
+    if (params.dataFinal) {
+      const d = `${params.dataFinal.slice(0, 4)}-${params.dataFinal.slice(4, 6)}-${params.dataFinal.slice(6)}`
+      conditions.push(lte(pncpCache.dataPublicacaoPncp, d))
+    }
   }
   if (params.objeto) {
     conditions.push(ilike(pncpCache.objeto, `%${params.objeto}%`))
+  }
+  if (params.segmentos) {
+    const segList = params.segmentos.split('|').map(s => s.trim()).filter(Boolean)
+    if (segList.length > 0) {
+      conditions.push(arrayOverlaps(pncpCache.segmentos, segList))
+    }
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined
   const offset = (params.page - 1) * params.limit
 
-  const orderCol = params.sortBy === 'valorTotalEstimado'
+  const orderExpr = params.sortBy === 'valorTotalEstimado'
     ? pncpCache.valorTotalEstimado
     : params.sortBy === 'dataAberturaProposta'
       ? pncpCache.dataAberturaProposta
-      : pncpCache.dataPublicacaoPncp
+      : params.sortBy === 'dataEncerramentoProposta'
+        ? sql`COALESCE(${pncpCache.dataEncerramentoProposta}, ${pncpCache.dataAberturaProposta})`
+        : pncpCache.dataPublicacaoPncp
 
   const [data, countResult] = await Promise.all([
     db.select().from(pncpCache)
       .where(where)
-      .orderBy(params.sortOrder === 'desc' ? desc(orderCol) : asc(orderCol))
+      .orderBy(params.sortOrder === 'desc' ? desc(orderExpr) : asc(orderExpr))
       .limit(params.limit)
       .offset(offset),
     db.select({ total: count() }).from(pncpCache).where(where),

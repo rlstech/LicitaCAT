@@ -74,8 +74,9 @@ services:
         - "traefik.http.services.licitacat-api.loadbalancer.server.port=3001"
         - "traefik.http.middlewares.api-buffering.buffering.maxRequestBodyBytes=52428800"
         - "traefik.http.middlewares.api-buffering.buffering.maxResponseBodyBytes=52428800"
-        # Roteador SSE (sem buffering de resposta — prioridade maior por regra mais específica)
-        - "traefik.http.routers.licitacat-api-sse.rule=Host(`api.licitacat.railton.eu.org`) && Path(`/api/cats/chat`)"
+        # Roteador SSE — sem buffering de resposta (prioridade maior por regra mais específica)
+        # Cobre: /api/cats/chat  e  /api/crossings/*/stream
+        - "traefik.http.routers.licitacat-api-sse.rule=Host(`api.licitacat.railton.eu.org`) && (Path(`/api/cats/chat`) || PathRegexp(`^/api/crossings/[^/]+/stream$$`))"
         - "traefik.http.routers.licitacat-api-sse.entrypoints=websecure"
         - "traefik.http.routers.licitacat-api-sse.tls=true"
         - "traefik.http.routers.licitacat-api-sse.tls.certresolver=letsencryptresolver"

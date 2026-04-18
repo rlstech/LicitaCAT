@@ -8,7 +8,9 @@
     "./types": "./src/types/index.ts",
     "./schemas": "./src/schemas/index.ts",
     "./errors": "./src/errors/index.ts",
-    "./pncp": "./src/pncp.ts"
+    "./pncp": "./src/pncp.ts",
+    "./pncp-segments": "./src/pncp-segments.ts",
+    "./units": "./src/units.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

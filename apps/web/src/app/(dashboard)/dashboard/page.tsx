@@ -1,4 +1,5 @@
-import { auth } from '@clerk/nextjs/server'
+import { auth } from '@licitacat/auth'
+import { headers } from 'next/headers'
 import Link from 'next/link'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
@@ -136,8 +137,8 @@ async function fetchStats(token: string | null): Promise<DashboardStats | null> 
 }
 
 export default async function DashboardPage() {
-  const { getToken } = auth()
-  const token = await getToken()
+  const session = await auth.api.getSession({ headers: headers() as unknown as Headers })
+  const token = session?.session.token ?? null
   const stats = await fetchStats(token)
 
   const avgScore = stats?.crossings.avgScore ?? 0

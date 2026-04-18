@@ -31,8 +31,8 @@ import {
   normalizeCatItensDescriptions,
 } from './repository.js'
 import { db } from '@licitacat/db'
-import { processingJobs } from '@licitacat/db/schema'
-import { sql } from 'drizzle-orm'
+import { processingJobs, catItens } from '@licitacat/db/schema'
+import { sql, inArray, and, eq } from 'drizzle-orm'
 import { embeddingGenQueue } from '@licitacat/queue/queues'
 import { z } from 'zod'
 
@@ -374,12 +374,38 @@ export async function catsRoutes(app: FastifyInstance) {
       .slice(0, 10)
       .map(({ row }) => row)
 
+    const catIds = ranked.map((r) => r.id)
+    const itemRows = catIds.length > 0
+      ? await db
+          .select({
+            catId: catItens.catId,
+            descricao: catItens.descricao,
+            unidade: catItens.unidade,
+            quantidade: catItens.quantidade,
+          })
+          .from(catItens)
+          .where(and(eq(catItens.tenantId, tenantId), inArray(catItens.catId, catIds)))
+          .orderBy(catItens.catId, catItens.ordem)
+      : []
+
+    const itemsByCatId = new Map<string, typeof itemRows>()
+    for (const item of itemRows) {
+      const list = itemsByCatId.get(item.catId) ?? []
+      list.push(item)
+      itemsByCatId.set(item.catId, list)
+    }
+
     const contextCats: CatContextItem[] = ranked.map((r) => ({
       id: r.id,
       numeroCat: r.numero_cat,
       empresaContratante: r.empresa_contratante,
       tipoObraServico: r.tipo_obra_servico,
       descricaoTecnica: r.descricao_tecnica,
+      itens: (itemsByCatId.get(r.id) ?? []).map((it) => ({
+        descricao: it.descricao,
+        unidade: it.unidade,
+        quantidade: it.quantidade,
+      })),
     }))
 
     // 5. Montar system prompt com contexto RAG

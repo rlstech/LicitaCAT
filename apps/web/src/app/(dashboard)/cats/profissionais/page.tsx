@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
@@ -17,7 +17,7 @@ interface Profissional {
 const UF_LIST = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 export default function ProfissionaisPage() {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const [profissionais, setProfissionais] = useState<Profissional[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)

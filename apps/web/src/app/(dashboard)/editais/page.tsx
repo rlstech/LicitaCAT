@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
@@ -39,7 +39,7 @@ const PROCESSING_STATUSES = ['ocr_processing', 'extracting']
 const ITEMS_PER_PAGE = 20
 
 export default function EditaisPage() {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const [editais, setEditais] = useState<Edital[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)

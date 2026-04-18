@@ -6,6 +6,10 @@ import { db } from '@licitacat/db'
 import { crossings, crossingItems, crossingItemCats, reqParcelasRelevancia, editais, processingJobs, cats, catItens } from '@licitacat/db/schema'
 import { eq, and, desc, sql, count, inArray } from 'drizzle-orm'
 import { crossingQueue } from '@licitacat/queue/queues'
+import { normalizeToBaseUnit } from '@licitacat/shared/units'
+import Redis from 'ioredis'
+
+const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379'
 
 const RESULTADO_LABELS: Record<string, string> = {
   atendido: 'Atendido',
@@ -270,10 +274,40 @@ export async function crossingsRoutes(app: FastifyInstance) {
       catMatchMap.set(match.crossingItemId, arr)
     }
 
-    return items.map((item) => ({
-      ...item,
-      catMatches: catMatchMap.get(item.id) ?? [],
-    }))
+    return items.map((item) => {
+      const matches = catMatchMap.get(item.id) ?? []
+
+      // Calcular cobertura quantitativa do acervo para o termômetro
+      const minQty = item.parcelaQuantidadeMinima ? parseFloat(item.parcelaQuantidadeMinima) : null
+      const minNorm = normalizeToBaseUnit(minQty, item.parcelaUnidade)
+
+      let parcelaQuantidadeAcervo: number | null = null
+      let parcelaCoberturaPct: number | null = null
+
+      if (minNorm) {
+        // Somar quantidades de catItens dos matches que atendem (avaliacao != nao_atende)
+        let acervoSum = 0
+        for (const m of matches) {
+          if (m.avaliacaoLlm === 'nao_atende') continue
+          const itemQty = m.catItemQuantidade ? parseFloat(m.catItemQuantidade) : null
+          const norm = normalizeToBaseUnit(itemQty, m.catItemUnidade)
+          if (norm && norm.baseUnit === minNorm.baseUnit) {
+            acervoSum += norm.value
+          }
+        }
+        if (acervoSum > 0) {
+          parcelaQuantidadeAcervo = acervoSum
+          parcelaCoberturaPct = Math.min(100, Math.round((acervoSum / minNorm.value) * 100))
+        }
+      }
+
+      return {
+        ...item,
+        catMatches: matches,
+        parcelaQuantidadeAcervo,
+        parcelaCoberturaPct,
+      }
+    })
   })
 
   // GET /api/crossings/:crossingId/export/csv
@@ -372,6 +406,82 @@ export async function crossingsRoutes(app: FastifyInstance) {
     reply.header('Content-Type', 'text/csv; charset=utf-8')
     reply.header('Content-Disposition', `attachment; filename="${filename}"`)
     return reply.send('\uFEFF' + csv) // BOM para Excel reconhecer UTF-8
+  })
+
+  // GET /api/crossings/:crossingId/stream — SSE real-time updates
+  app.get('/:crossingId/stream', async (request, reply) => {
+    const { crossingId } = CrossingParamsSchema.parse(request.params)
+
+    // Verify crossing belongs to tenant
+    const crossing = await db.query.crossings.findFirst({
+      where: and(eq(crossings.id, crossingId), eq(crossings.tenantId, request.tenantId)),
+    })
+    if (!crossing) throw new NotFoundError('Crossing', crossingId)
+
+    // If already completed/error, send final event immediately
+    if (crossing.status === 'completed' || crossing.status === 'error') {
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      })
+      const evt = crossing.status === 'completed'
+        ? JSON.stringify({ type: 'completed', scoreAderencia: crossing.scoreAderencia, recomendacao: crossing.recomendacao })
+        : JSON.stringify({ type: 'error', message: 'Processing failed' })
+      reply.raw.write(`event: update\ndata: ${evt}\n\n`)
+      reply.raw.end()
+      return reply
+    }
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    })
+    reply.raw.flushHeaders?.()
+
+    const subscriber = new Redis(REDIS_URL)
+    const channel = `crossing:${crossingId}:updates`
+
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+    const cleanup = () => {
+      if (heartbeatTimer) clearInterval(heartbeatTimer)
+      subscriber.unsubscribe(channel).catch(() => {})
+      subscriber.quit().catch(() => {})
+    }
+
+    subscriber.subscribe(channel, (err) => {
+      if (err) {
+        reply.raw.write(`event: update\ndata: ${JSON.stringify({ type: 'error', message: 'Subscribe failed' })}\n\n`)
+        reply.raw.end()
+        cleanup()
+      }
+    })
+
+    subscriber.on('message', (_ch: string, message: string) => {
+      reply.raw.write(`event: update\ndata: ${message}\n\n`)
+      // Close connection after completed/error
+      try {
+        const parsed = JSON.parse(message) as { type: string }
+        if (parsed.type === 'completed' || parsed.type === 'error') {
+          reply.raw.end()
+          cleanup()
+        }
+      } catch { /* ignore parse errors */ }
+    })
+
+    // Heartbeat every 20s to prevent proxy timeout
+    heartbeatTimer = setInterval(() => {
+      reply.raw.write(': ping\n\n')
+    }, 20_000)
+
+    // Cleanup on client disconnect
+    request.raw.on('close', cleanup)
+
+    return reply
   })
 
   // PATCH /api/crossings/:crossingId/items/:itemId/override

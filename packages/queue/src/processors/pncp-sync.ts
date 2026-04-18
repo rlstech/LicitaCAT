@@ -8,6 +8,7 @@ import {
 } from '@licitacat/shared/pncp'
 import { eq, sql } from 'drizzle-orm'
 import type { PncpSyncJobData } from '../queues/index.js'
+import { pncpEnrichQueue } from '../queues/index.js'
 import type { NewPncpCacheRecord } from '@licitacat/db/schema'
 
 const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379'
@@ -53,6 +54,8 @@ function mapToCache(item: PncpContratacao, uf: string): NewPncpCacheRecord {
     valorTotalEstimado:  item.valorTotalEstimado != null ? String(item.valorTotalEstimado) : null,
     dataPublicacaoPncp:  item.dataPublicacaoPncp.slice(0, 10),
     dataAberturaProposta: item.dataAberturaProposta ? new Date(item.dataAberturaProposta) : null,
+    dataEncerramentoProposta: item.dataEncerramentoProposta ? new Date(item.dataEncerramentoProposta) : null,
+    enrichStatus: item.dataEncerramentoProposta ? 'done' : 'pending',
     situacaoCompraId:    item.situacaoCompraId ?? null,
     situacaoCompraNome:  item.situacaoCompraNome,
     linkSistemaOrigem:   item.linkSistemaOrigem ?? null,
@@ -64,6 +67,8 @@ const UPSERT_SET = {
   objeto:               sql`excluded.objeto`,
   valorTotalEstimado:   sql`excluded.valor_total_estimado`,
   dataAberturaProposta: sql`excluded.data_abertura_proposta`,
+  dataEncerramentoProposta: sql`COALESCE(excluded.data_encerramento_proposta, pncp_cache.data_encerramento_proposta)`,
+  enrichStatus:         sql`CASE WHEN excluded.data_encerramento_proposta IS NOT NULL THEN 'done' ELSE pncp_cache.enrich_status END`,
   situacaoCompraId:     sql`excluded.situacao_compra_id`,
   situacaoCompraNome:   sql`excluded.situacao_compra_nome`,
   rawData:              sql`excluded.raw_data`,
@@ -169,6 +174,10 @@ async function processPncpSync(job: Job<PncpSyncJobData>): Promise<void> {
 
     const totalUpserted = upserted1 + upserted2
     console.log(`[pncp-sync] Concluído: ${upserted1} pub + ${upserted2} prop = ${totalUpserted} registros`)
+
+    // Disparar enriquecimento para obter dataEncerramentoProposta dos novos registros
+    await pncpEnrichQueue.add('post_sync_enrich', {}, { delay: 5000 })
+    console.log('[pncp-sync] Job de enriquecimento agendado.')
 
     // 6. Marcar concluído
     await db.update(pncpSyncConfig)

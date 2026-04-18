@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
 import Link from 'next/link'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
@@ -22,7 +22,7 @@ interface QueueFile {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function UploadEditalLotePage() {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const [queue, setQueue] = useState<QueueFile[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
   const [isRunning, setIsRunning] = useState(false)

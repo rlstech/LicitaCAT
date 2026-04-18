@@ -1,8 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
-import { getAuth, clerkClient } from '@clerk/fastify'
 import { db } from '@licitacat/db'
-import { users } from '@licitacat/db/schema'
-import { eq, and, isNull } from 'drizzle-orm'
+import { users, baSession, baUser } from '@licitacat/db/schema'
+import { eq, and, isNull, gt } from 'drizzle-orm'
 import { UnauthorizedError, ForbiddenError } from '@licitacat/shared/errors'
 import type { UserRole } from '@licitacat/shared/types'
 
@@ -16,42 +15,58 @@ declare module 'fastify' {
 
 export async function requireAuth(
   request: FastifyRequest,
-  reply: FastifyReply,
+  _reply: FastifyReply,
 ): Promise<void> {
-  const { userId: authProviderId } = getAuth(request)
+  // Extrair Bearer token do header Authorization
+  const authHeader = request.headers.authorization
+  if (!authHeader?.startsWith('Bearer ')) {
+    throw new UnauthorizedError()
+  }
+  const token = authHeader.slice(7)
 
-  if (!authProviderId) {
+  // Validar sessão no banco (ba_session)
+  const sessionRow = await db
+    .select({
+      sessionId: baSession.id,
+      userId: baSession.userId,
+      expiresAt: baSession.expiresAt,
+      email: baUser.email,
+      baUserId: baUser.id,
+    })
+    .from(baSession)
+    .innerJoin(baUser, eq(baSession.userId, baUser.id))
+    .where(and(eq(baSession.token, token), gt(baSession.expiresAt, new Date())))
+    .limit(1)
+    .then(rows => rows[0])
+
+  if (!sessionRow) {
     throw new UnauthorizedError()
   }
 
-  // 1. Fast path: find by Clerk user ID (normal flow)
+  const { email, baUserId } = sessionRow
+
+  // 1. Fast path: find by Better Auth user ID (normal flow)
   let user = await db.query.users.findFirst({
-    where: eq(users.authProviderId, authProviderId),
+    where: eq(users.authProviderId, baUserId),
   })
 
-  // 2. Fallback: find invited user by email and auto-link
+  // 2. Fallback: find by email and auto-link
+  // Cobre dois casos: (a) auth_provider_id NULL (usuário convidado novo)
+  //                  (b) auth_provider_id com ID antigo do Clerk (user_xxx)
   if (!user) {
-    try {
-      const clerkUser = await clerkClient.users.getUser(authProviderId)
-      const email = clerkUser.emailAddresses[0]?.emailAddress
-      if (email) {
-        const pending = await db.query.users.findFirst({
-          where: and(eq(users.email, email), isNull(users.authProviderId)),
-        })
-        if (pending) {
-          const [linked] = await db
-            .update(users)
-            .set({ authProviderId, updatedAt: new Date() })
-            .where(eq(users.id, pending.id))
-            .returning()
-          request.log.info({ email, userId: pending.id }, 'Auto-linked Clerk user to invited record')
-          user = linked
-        } else {
-          request.log.warn({ email, authProviderId }, 'Clerk user not found in tenant — no pending invite')
-        }
-      }
-    } catch (err) {
-      request.log.error({ authProviderId, err }, 'Clerk API call failed during auto-link')
+    const byEmail = await db.query.users.findFirst({
+      where: eq(users.email, email),
+    })
+    if (byEmail && (byEmail.authProviderId === null || byEmail.authProviderId?.startsWith('user_'))) {
+      const [linked] = await db
+        .update(users)
+        .set({ authProviderId: baUserId, updatedAt: new Date() })
+        .where(eq(users.id, byEmail.id))
+        .returning()
+      request.log.info({ email, userId: byEmail.id }, 'Auto-linked Better Auth user')
+      user = linked
+    } else {
+      request.log.warn({ email, baUserId }, 'Better Auth user not found in tenant — no pending invite')
     }
   }
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
@@ -54,7 +54,7 @@ function formatRelativeTime(iso: string | null): string {
 }
 
 export default function MonitoramentoPncpPage() {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const [config, setConfig] = useState<SyncConfig>({
     ufs: [], modalidades: [], retentionDays: 90, isActive: false,
     lastSyncedAt: null, lastSyncStatus: null, recordsSynced: null,

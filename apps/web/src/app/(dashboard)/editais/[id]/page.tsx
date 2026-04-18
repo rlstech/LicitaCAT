@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
+import { useSession } from '@/lib/auth-client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -396,7 +397,8 @@ function TabAlertas({ hab }: { hab: Habilitacao }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function EditalDetailPage() {
-  const { getToken, isLoaded } = useAuth()
+  const getToken = useToken()
+  const { isPending } = useSession()
   const params = useParams()
   const router = useRouter()
   const editalId = params.id as string
@@ -429,13 +431,13 @@ export default function EditalDetailPage() {
   }, [getToken, editalId])
 
   useEffect(() => {
-    if (!isLoaded) return
+    if (!!isPending) return
     fetchData()
     const iv = setInterval(() => {
       if (!edital || ['uploaded', 'extracting'].includes(edital.status)) fetchData()
     }, 5000)
     return () => clearInterval(iv)
-  }, [fetchData, isLoaded, edital?.status])
+  }, [fetchData, !isPending, edital?.status])
 
   async function approve() {
     setApproving(true)

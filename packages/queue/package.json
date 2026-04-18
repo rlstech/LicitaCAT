@@ -19,6 +19,7 @@
     "@licitacat/ai": "workspace:*",
     "@aws-sdk/client-s3": "^3.500.0",
     "bullmq": "^5.4.0",
+    "ioredis": "^5.3.2",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "zod": "^3.22.0"

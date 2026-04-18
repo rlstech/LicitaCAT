@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
@@ -101,7 +101,7 @@ function RequisitosBar({ atendidos, parciais, gaps, total }: {
 }
 
 export default function CruzamentosPage() {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const [crossings, setCrossings] = useState<Crossing[]>([])
   const [loading, setLoading] = useState(true)
 

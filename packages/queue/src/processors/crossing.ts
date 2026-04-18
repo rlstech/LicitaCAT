@@ -1,4 +1,5 @@
 import { Worker, type Job } from 'bullmq'
+import Redis from 'ioredis'
 import { db } from '@licitacat/db'
 import {
     crossings,
@@ -40,6 +41,10 @@ const RRF_K = 60                     // standard RRF constant (higher = smoother
 const connection = {
     host: new URL(REDIS_URL).hostname,
     port: parseInt(new URL(REDIS_URL).port ?? '6379', 10),
+}
+
+function createPublisher(): Redis {
+    return new Redis(REDIS_URL, { lazyConnect: true, enableOfflineQueue: false })
 }
 
 interface CandidateResult {
@@ -431,6 +436,12 @@ function calculateCombinedQuantity(
 async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
     const { tenantId, crossingId, editalId, jobId } = job.data
     const startTime = Date.now()
+    const publisher = createPublisher()
+    const pubChannel = `crossing:${crossingId}:updates`
+
+    const publish = (payload: object) => {
+        publisher.publish(pubChannel, JSON.stringify(payload)).catch(() => {})
+    }
 
     await db.update(processingJobs).set({ status: 'running', startedAt: new Date() }).where(eq(processingJobs.id, jobId))
     await db.update(crossings).set({ status: 'processing' }).where(eq(crossings.id, crossingId))
@@ -635,6 +646,18 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
                 gaps++
                 gapDescriptions.push(requisito.servico.slice(0, 200))
             }
+
+            // Publish SSE event for real-time update
+            const processed = atendidos + parciais + gaps
+            const catMatchesCount = avaliacoes.filter(a => a.avaliacaoLlm !== 'nao_atende').length
+            publish({
+                type: 'item_updated',
+                itemId: crossingItem.id,
+                resultado,
+                scoreSimilaridadeMax,
+                catMatchesCount,
+            })
+            publish({ type: 'progress', processed, total: requisitos.length })
         }
 
         // 6. Calculate adherence score
@@ -702,6 +725,8 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
             .update(processingJobs)
             .set({ status: 'completed', completedAt: new Date(), costUsd: totalCost.toFixed(6) })
             .where(eq(processingJobs.id, jobId))
+
+        publish({ type: 'completed', scoreAderencia, recomendacao })
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
@@ -713,9 +738,12 @@ async function processCrossing(job: Job<CrossingJobData>): Promise<void> {
 
         if (status === 'failed') {
             await db.update(crossings).set({ status: 'error' }).where(eq(crossings.id, crossingId))
+            publish({ type: 'error', message: errorMessage })
         }
 
         throw error
+    } finally {
+        publisher.quit().catch(() => {})
     }
 }
 

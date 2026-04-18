@@ -2,7 +2,6 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
 import multipart from '@fastify/multipart'
-import { clerkPlugin } from '@clerk/fastify'
 
 import { editaisRoutes } from './modules/editais/routes.js'
 import { catsRoutes } from './modules/cats/routes.js'
@@ -23,8 +22,18 @@ async function buildServer() {
   })
 
   // Plugins
+  const allowedOrigins = [
+    process.env['WEB_URL'] ?? 'http://localhost:3000',
+    'https://licitacat.railton.eu.org',
+  ]
   await app.register(cors, {
-    origin: process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000',
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        cb(null, true)
+      } else {
+        cb(new Error('Not allowed by CORS'), false)
+      }
+    },
     credentials: true,
   })
 
@@ -38,8 +47,6 @@ async function buildServer() {
       fileSize: 50 * 1024 * 1024, // 50MB
     },
   })
-
-  await app.register(clerkPlugin)
 
   // Health check
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))

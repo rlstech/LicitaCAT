@@ -20,6 +20,11 @@
     "db:generate": "pnpm --filter @licitacat/db generate",
     "clean": "turbo run clean && rm -rf node_modules"
   },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.19.0"
+    }
+  },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "turbo": "^2.0.0",

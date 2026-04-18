@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useToken } from '@/hooks/use-token'
+import { useSession } from '@/lib/auth-client'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
@@ -78,7 +79,7 @@ function InviteForm({
   onSuccess: (user: UserEntry) => void
   onCancel: () => void
 }) {
-  const { getToken } = useAuth()
+  const getToken = useToken()
   const [email, setEmail]   = useState('')
   const [name, setName]     = useState('')
   const [role, setRole]     = useState<'admin' | 'analyst' | 'viewer'>('analyst')
@@ -197,7 +198,8 @@ function InviteForm({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function UsuariosPage() {
-  const { getToken, isLoaded } = useAuth()
+  const getToken = useToken()
+  const { isPending } = useSession()
 
   const [users, setUsers]             = useState<UserEntry[]>([])
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -207,6 +209,7 @@ export default function UsuariosPage() {
   // per-row state
   const [editingRole, setEditingRole]   = useState<string | null>(null)
   const [confirmDeact, setConfirmDeact] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [saving, setSaving]             = useState<string | null>(null)
 
   const fetchAll = useCallback(async () => {
@@ -224,9 +227,9 @@ export default function UsuariosPage() {
   }, [getToken])
 
   useEffect(() => {
-    if (!isLoaded) return
+    if (!!isPending) return
     fetchAll()
-  }, [fetchAll, isLoaded])
+  }, [fetchAll, !isPending])
 
   async function changeRole(userId: string, newRole: 'admin' | 'analyst' | 'viewer') {
     setSaving(userId)
@@ -256,6 +259,21 @@ export default function UsuariosPage() {
       if (r.status === 204) {
         setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, active: false } : u))
         setConfirmDeact(null)
+      }
+    } catch { /* ignore */ } finally { setSaving(null) }
+  }
+
+  async function hardDelete(userId: string) {
+    setSaving(userId)
+    try {
+      const token = await getToken()
+      const r = await fetch(`${API_URL}/api/users/${userId}/permanent`, {
+        method: 'DELETE',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      })
+      if (r.status === 204) {
+        setUsers((prev) => prev.filter((u) => u.id !== userId))
+        setConfirmDelete(null)
       }
     } catch { /* ignore */ } finally { setSaving(null) }
   }
@@ -341,6 +359,7 @@ export default function UsuariosPage() {
                 const isMe = user.id === currentUser?.id
                 const isEditing = editingRole === user.id
                 const isConfirming = confirmDeact === user.id
+                const isConfirmingDelete = confirmDelete === user.id
                 const isSaving = saving === user.id
 
                 return (
@@ -406,13 +425,30 @@ export default function UsuariosPage() {
                       <td className="px-6 py-4">
                         {isMe ? (
                           <span className="text-xs text-slate-300">—</span>
+                        ) : isConfirmingDelete ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="text-xs text-red-600 font-medium">Excluir permanentemente?</span>
+                            <button
+                              onClick={() => hardDelete(user.id)}
+                              disabled={isSaving}
+                              className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                            >
+                              {isSaving ? <Spinner className="h-3 w-3" /> : 'Confirmar'}
+                            </button>
+                            <button
+                              onClick={() => setConfirmDelete(null)}
+                              className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
                         ) : isConfirming ? (
                           <div className="flex items-center justify-end gap-2">
                             <span className="text-xs text-slate-500">Confirmar?</span>
                             <button
                               onClick={() => deactivate(user.id)}
                               disabled={isSaving}
-                              className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                              className="rounded-lg bg-orange-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-orange-600 disabled:opacity-50"
                             >
                               {isSaving ? <Spinner className="h-3 w-3" /> : 'Desativar'}
                             </button>
@@ -428,16 +464,16 @@ export default function UsuariosPage() {
                             {user.active ? (
                               <>
                                 <button
-                                  onClick={() => { setEditingRole(user.id); setConfirmDeact(null) }}
+                                  onClick={() => { setEditingRole(user.id); setConfirmDeact(null); setConfirmDelete(null) }}
                                   title="Alterar nível de acesso"
                                   className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                                 >
                                   <span className="material-symbols-outlined text-[1rem]">manage_accounts</span>
                                 </button>
                                 <button
-                                  onClick={() => { setConfirmDeact(user.id); setEditingRole(null) }}
+                                  onClick={() => { setConfirmDeact(user.id); setEditingRole(null); setConfirmDelete(null) }}
                                   title="Desativar usuário"
-                                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-orange-50 hover:text-orange-500"
                                 >
                                   <span className="material-symbols-outlined text-[1rem]">person_off</span>
                                 </button>
@@ -453,6 +489,13 @@ export default function UsuariosPage() {
                                 Reativar
                               </button>
                             )}
+                            <button
+                              onClick={() => { setConfirmDelete(user.id); setConfirmDeact(null); setEditingRole(null) }}
+                              title="Excluir usuário permanentemente"
+                              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                            >
+                              <span className="material-symbols-outlined text-[1rem]">delete</span>
+                            </button>
                           </div>
                         )}
                       </td>
