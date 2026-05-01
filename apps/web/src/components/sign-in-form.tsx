@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { signIn } from '@/lib/auth-client'
 
 export function SignInForm() {
@@ -46,9 +47,14 @@ export function SignInForm() {
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
-          Senha
-        </label>
+        <div className="flex items-center justify-between mb-1">
+          <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+            Senha
+          </label>
+          <Link href="/forgot-password" className="text-xs font-medium text-brand-600 hover:text-brand-700">
+            Esqueceu a senha?
+          </Link>
+        </div>
         <input
           id="password"
           type="password"

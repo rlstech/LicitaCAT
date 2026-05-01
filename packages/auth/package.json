@@ -7,8 +7,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@licitacat/db": "workspace:*",
     "better-auth": "^1.2.0",
-    "@licitacat/db": "workspace:*"
+    "resend": "^6.12.2"
   },
   "devDependencies": {
     "typescript": "^5.4.0"

@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
 
-  # ── Next.js Frontend ──────────────────────────────────────────
+  # ── Next.js Frontend ────────────────────────────��─────────────
   web:
     image: licitacat-web:latest
     networks:
@@ -12,9 +12,11 @@ services:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: "https://api.licitacat.railton.eu.org"
       NEXT_PUBLIC_BETTER_AUTH_URL: "https://licitacat.railton.eu.org"
-      BETTER_AUTH_SECRET: "***REMOVED-AUTH-SECRET***"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET}"
       BETTER_AUTH_URL: "https://licitacat.railton.eu.org"
-      DATABASE_URL: "postgresql://licitacat:licitacat@postgres:5432/licitacat"
+      DATABASE_URL: "${DATABASE_URL}"
+      RESEND_API_KEY: "${RESEND_API_KEY}"
+      RESEND_FROM_EMAIL: "${RESEND_FROM_EMAIL:-onboarding@resend.dev}"
     deploy:
       replicas: 1
       restart_policy:
@@ -42,17 +44,17 @@ services:
       API_PORT: "3001"
       NEXT_PUBLIC_API_URL: "https://api.licitacat.railton.eu.org"
       WEB_URL: "https://licitacat.railton.eu.org"
-      BETTER_AUTH_SECRET: "***REMOVED-AUTH-SECRET***"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET}"
       BETTER_AUTH_URL: "https://licitacat.railton.eu.org"
-      DATABASE_URL: "postgresql://licitacat:licitacat@postgres:5432/licitacat"
+      DATABASE_URL: "${DATABASE_URL}"
       REDIS_URL: "redis://redis:6379"
       S3_BUCKET: "licitacat"
       S3_REGION: "us-east-1"
       S3_ENDPOINT: "http://minio:9000"
       S3_PUBLIC_ENDPOINT: "https://storage.licitacat.railton.eu.org"
-      AWS_ACCESS_KEY_ID: "minioadmin"
-      AWS_SECRET_ACCESS_KEY: "minioadmin"
-      GEMINI_API_KEY: "***REMOVED-GEMINI-KEY***"
+      AWS_ACCESS_KEY_ID: "${MINIO_ROOT_USER}"
+      AWS_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY}"
       VOYAGE_API_KEY: ""
       GOOGLE_DOCUMENT_AI_PROJECT_ID: "engcheck"
       GOOGLE_DOCUMENT_AI_PROCESSOR_ID: "6547814ce6130bd6"
@@ -92,16 +94,16 @@ services:
       - gcp_credentials
     environment:
       NODE_ENV: production
-      DATABASE_URL: "postgresql://licitacat:licitacat@postgres:5432/licitacat"
+      DATABASE_URL: "${DATABASE_URL}"
       REDIS_URL: "redis://redis:6379"
       S3_BUCKET: "licitacat"
       S3_REGION: "us-east-1"
       S3_ENDPOINT: "http://minio:9000"
-      AWS_ACCESS_KEY_ID: "minioadmin"
-      AWS_SECRET_ACCESS_KEY: "minioadmin"
-      BETTER_AUTH_SECRET: "***REMOVED-AUTH-SECRET***"
+      AWS_ACCESS_KEY_ID: "${MINIO_ROOT_USER}"
+      AWS_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD}"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET}"
       BETTER_AUTH_URL: "https://licitacat.railton.eu.org"
-      GEMINI_API_KEY: "***REMOVED-GEMINI-KEY***"
+      GEMINI_API_KEY: "${GEMINI_API_KEY}"
       VOYAGE_API_KEY: ""
       GOOGLE_DOCUMENT_AI_PROJECT_ID: "engcheck"
       GOOGLE_DOCUMENT_AI_PROCESSOR_ID: "6547814ce6130bd6"
@@ -118,8 +120,8 @@ services:
     networks:
       - licitacat_network
     environment:
-      POSTGRES_USER: licitacat
-      POSTGRES_PASSWORD: licitacat
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
       POSTGRES_DB: licitacat
     volumes:
       - licitacat_postgres_data:/var/lib/postgresql/data
@@ -152,8 +154,8 @@ services:
       - licitacat_network
       - network_public
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
     volumes:
       - licitacat_minio_data:/data
     deploy:

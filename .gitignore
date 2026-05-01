@@ -39,9 +39,12 @@ test-results
 .cache
 *.tsbuildinfo
 
-# Environment & Secrets (AIOX)
+# Environment & Secrets
 *.key
 *.pem
+secrets.env
+*.secrets.env
+!secrets.env.example
 
 # Dependencies (AIOX)
 node_modules/
