@@ -21,7 +21,7 @@ export function PrintSection({ items }: { items: CrossingItem[] }) {
               <div
                 key={item.id}
                 className="mb-1.5 rounded-lg p-3 text-xs"
-                style={{ border: `1px solid ${color}30`, borderLeft: `3px solid ${color}` }}
+                style={{ border: `1px solid ${color}30`, backgroundColor: `${color}08` }}
               >
                 <span className="font-semibold text-slate-900">{idx + 1}. {item.parcelaServico}</span>
                 {item.parcelaQuantidadeMinima && (

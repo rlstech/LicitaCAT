@@ -251,7 +251,7 @@ export default function UploadEditalLotePage() {
       {allDone && errorCount === 0 && (
         <div
           className="mt-4 rounded-xl px-5 py-4"
-          style={{ border: '1px solid rgba(22,163,74,0.2)', borderLeft: '3px solid #16a34a', backgroundColor: 'rgba(240,253,244,0.8)' }}
+          style={{ border: '1px solid rgba(22,163,74,0.3)', backgroundColor: 'rgba(240,253,244,0.8)' }}
         >
           <p className="text-sm font-semibold text-green-800">
             {doneCount} edital{doneCount !== 1 ? 'is enviados' : ' enviado'} com sucesso!

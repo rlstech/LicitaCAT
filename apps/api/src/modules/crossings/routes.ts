@@ -88,6 +88,7 @@ export async function crossingsRoutes(app: FastifyInstance) {
         requisitosComRessalva: crossings.requisitosComRessalva,
         requisitosGap: crossings.requisitosGap,
         recomendacao: crossings.recomendacao,
+        recomendacaoJustificativa: crossings.recomendacaoJustificativa,
         aiCostUsd: crossings.aiCostUsd,
         processingTimeSeconds: crossings.processingTimeSeconds,
         createdAt: crossings.createdAt,

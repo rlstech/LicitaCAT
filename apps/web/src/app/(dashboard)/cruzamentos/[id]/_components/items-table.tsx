@@ -125,7 +125,7 @@ function MobileItemCard({
   return (
     <div
       className="overflow-hidden rounded-xl bg-white shadow-sm"
-      style={{ borderLeft: `4px solid ${accentColor}`, border: '1px solid var(--border-soft)', borderLeftWidth: '4px', borderLeftColor: accentColor }}
+      style={{ border: `1px solid ${accentColor}30`, borderTop: `3px solid ${accentColor}` }}
     >
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">

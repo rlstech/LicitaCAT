@@ -263,7 +263,7 @@ export function CatChatDrawer({ open, onClose, getToken }: CatChatDrawerProps) {
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px] transition-opacity"
+          className="fixed inset-0 z-40 bg-[#0f172a]/40 transition-opacity"
           onClick={onClose}
         />
       )}
@@ -275,7 +275,7 @@ export function CatChatDrawer({ open, onClose, getToken }: CatChatDrawerProps) {
         }`}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-slate-100 bg-gradient-to-r from-[#003746] to-[#00526a] px-5 py-4">
+        <div className="flex items-center gap-3 border-b border-[#002a36] bg-[#003746] px-5 py-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
             <span
               className="material-symbols-outlined text-[18px] text-white"
@@ -356,10 +356,10 @@ export function CatChatDrawer({ open, onClose, getToken }: CatChatDrawerProps) {
                   ) : msg.content ? (
                     <div className="prose-sm">{renderMarkdown(msg.content, catMap)}</div>
                   ) : (
-                    <div className="flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:0ms]" />
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:300ms]" />
+                    <div className="flex items-center gap-1.5" aria-label="Processando">
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400 [animation:typing_1.2s_ease-out_infinite_0ms]" style={{ animation: 'typing 1.2s ease-out infinite 0ms' }} />
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" style={{ animation: 'typing 1.2s ease-out infinite 200ms' }} />
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" style={{ animation: 'typing 1.2s ease-out infinite 400ms' }} />
                     </div>
                   )}
                 </div>

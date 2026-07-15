@@ -133,8 +133,8 @@ export default function UploadCatPage() {
 
         {noProfissionais ? (
           <div
-            className="px-5 py-4"
-            style={{ borderLeft: '3px solid #d97706', backgroundColor: 'rgba(251,191,36,0.05)' }}
+            className="rounded-lg px-5 py-4"
+            style={{ border: '1px solid rgba(217,119,6,0.25)', backgroundColor: 'rgba(254,243,199,0.5)' }}
           >
             <p className="text-sm text-amber-800">
               Nenhum profissional cadastrado.{' '}
@@ -265,7 +265,7 @@ export default function UploadCatPage() {
       {errorMessage && (
         <div
           className="mt-3 rounded-lg px-4 py-3"
-          style={{ border: '1px solid rgba(220,38,38,0.2)', borderLeft: '3px solid #dc2626', backgroundColor: 'rgba(254,242,242,0.7)' }}
+          style={{ border: '1px solid rgba(220,38,38,0.25)', backgroundColor: 'rgba(254,242,242,0.7)' }}
         >
           <p className="text-sm text-red-700">{errorMessage}</p>
         </div>

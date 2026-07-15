@@ -191,7 +191,7 @@ export default function UploadEditalPage() {
       {errorMessage && (
         <div
           className="mt-3 rounded-lg px-4 py-3"
-          style={{ border: '1px solid rgba(220,38,38,0.2)', borderLeft: '3px solid #dc2626', backgroundColor: 'rgba(254,242,242,0.7)' }}
+          style={{ border: '1px solid rgba(220,38,38,0.25)', backgroundColor: 'rgba(254,242,242,0.7)' }}
         >
           <p className="text-sm text-red-700">{errorMessage}</p>
         </div>

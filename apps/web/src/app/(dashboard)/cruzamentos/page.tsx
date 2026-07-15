@@ -16,6 +16,7 @@ interface Crossing {
   requisitosComRessalva: number | null
   requisitosGap: number | null
   recomendacao: string | null
+  recomendacaoJustificativa: string | null
   processingTimeSeconds: number | null
   createdAt: string
   editalNumero: string | null
@@ -232,9 +233,18 @@ export default function CruzamentosPage() {
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     {rec && (
-                      <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-tighter ${rec.bg} ${rec.text}`}>
-                        {rec.label}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-tighter ${rec.bg} ${rec.text}`}>
+                          {rec.label}
+                        </span>
+                        {c.recomendacaoJustificativa && (
+                          <p className="max-w-[200px] text-right text-[11px] leading-tight text-slate-400">
+                            {c.recomendacaoJustificativa.length > 80
+                              ? c.recomendacaoJustificativa.slice(0, 80) + '…'
+                              : c.recomendacaoJustificativa}
+                          </p>
+                        )}
+                      </div>
                     )}
                     <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-600">
                       <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
@@ -245,7 +255,20 @@ export default function CruzamentosPage() {
 
                 {/* Score + adherence */}
                 <div className="mb-8 flex items-center gap-10">
-                  <ScoreGauge score={c.scoreAderencia ?? 0} />
+                  <div className="flex flex-col items-center gap-2">
+                    <ScoreGauge score={c.scoreAderencia ?? 0} />
+                    <div className="flex gap-3 text-[10px] text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />≥80 Apto
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />50–79
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />&lt;50 Gap
+                      </span>
+                    </div>
+                  </div>
                   <div className="flex-1 space-y-4">
                     <RequisitosBar
                       atendidos={c.requisitosAtendidos}

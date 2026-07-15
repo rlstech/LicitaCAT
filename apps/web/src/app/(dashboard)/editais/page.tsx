@@ -4,6 +4,27 @@ import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 import { useToken } from '@/hooks/use-token'
 
+function exportToCsv(editais: { fileName: string; orgaoLicitante: string | null; numeroEdital: string | null; objeto: string | null; status: string; valorEstimado: string | null; dataAbertura: string | null }[]) {
+  const header = ['Nº Edital', 'Órgão Licitante', 'Objeto', 'Status', 'Valor Estimado', 'Data Abertura', 'Arquivo']
+  const rows = editais.map((e) => [
+    e.numeroEdital ?? '',
+    e.orgaoLicitante ?? '',
+    e.objeto ?? '',
+    e.status,
+    e.valorEstimado ?? '',
+    e.dataAbertura ? new Date(e.dataAbertura).toLocaleDateString('pt-BR') : '',
+    e.fileName,
+  ])
+  const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `editais_${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
 interface Edital {
@@ -130,7 +151,7 @@ export default function EditaisPage() {
           </Link>
           <Link
             href="/editais/upload"
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-[#003746] to-[#004f63] px-5 py-2 text-sm font-semibold text-white shadow-md transition-all hover:scale-[1.02] active:scale-95"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#003746] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#004f63]"
           >
             <span className="material-symbols-outlined text-[18px]">upload_file</span>
             Novo Edital
@@ -191,10 +212,12 @@ export default function EditaisPage() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <button className="rounded-lg p-1.5 text-slate-400 transition-colors hover:text-[#003746]">
-              <span className="material-symbols-outlined text-xl">view_column</span>
-            </button>
-            <button className="rounded-lg p-1.5 text-slate-400 transition-colors hover:text-[#003746]">
+            <button
+              onClick={() => exportToCsv(editais)}
+              disabled={editais.length === 0}
+              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:text-[#003746] disabled:opacity-30"
+              title="Exportar lista como CSV"
+            >
               <span className="material-symbols-outlined text-xl">download</span>
             </button>
           </div>
@@ -311,16 +334,9 @@ export default function EditaisPage() {
                               <Link
                                 href={`/editais/${edital.id}`}
                                 className="rounded-md p-1 text-[#003746] transition-colors hover:bg-[#003746]/10"
-                                title="Ver detalhes"
+                                title="Ver detalhes e requisitos"
                               >
                                 <span className="material-symbols-outlined text-lg">visibility</span>
-                              </Link>
-                              <Link
-                                href={`/editais/${edital.id}`}
-                                className="rounded-md p-1 text-[#003746] transition-colors hover:bg-[#003746]/10"
-                                title="Requisitos"
-                              >
-                                <span className="material-symbols-outlined text-lg">description</span>
                               </Link>
                               {renderDeleteButton(edital.id)}
                             </>
@@ -382,7 +398,7 @@ export default function EditaisPage() {
 
       {/* ── Bottom Section: Dica + Drop zone ── */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <div className="flex items-start gap-4 rounded-xl bg-gradient-to-br from-white to-[#f3faff] p-6 shadow-sm md:col-span-2" style={{ border: '1px solid rgba(207,230,242,0.2)' }}>
+        <div className="flex items-start gap-4 rounded-xl bg-white p-6 md:col-span-2" style={{ border: '1px solid var(--border)' }}>
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#cfe6f2] text-[#003746]">
             <span className="material-symbols-outlined text-3xl">lightbulb</span>
           </div>

@@ -278,7 +278,7 @@ export default function CatsPage() {
 
       {/* ── Delete modal ── */}
       {confirmDeleteId && confirmCat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" style={{ border: '1px solid var(--border)' }}>
             <h3 className="text-base font-semibold text-slate-900">Excluir CAT</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -304,7 +304,7 @@ export default function CatsPage() {
 
       {/* ── Edit modal ── */}
       {editingCat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/50 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl" style={{ border: '1px solid var(--border)' }}>
             <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
               <h3 className="text-base font-semibold text-slate-900">Editar resumo da CAT</h3>
@@ -393,7 +393,7 @@ export default function CatsPage() {
             Normalizar Descrições
           </button>
           <Link href="/cats/upload"
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#003746] to-[#004f63] px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg">
+            className="inline-flex items-center gap-2 rounded-lg bg-[#003746] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#004f63]">
             <span className="material-symbols-outlined text-[18px]">add</span>
             Nova CAT
           </Link>
@@ -715,33 +715,29 @@ export default function CatsPage() {
 
       {/* ── Bottom: AI Insight + Activity ── */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        {/* AI Suggestion */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-[#003746] to-[#004f63] p-8 text-white md:col-span-2">
-          <div className="relative z-10">
-            <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#85c0d7]">
-              <span className="material-symbols-outlined text-sm">tips_and_updates</span>
-              Sugestão de Inteligência Artificial
+        {/* Normalização de Embeddings */}
+        <div className="flex flex-col justify-between rounded-xl p-6 md:col-span-2"
+          style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-low, #e6f6ff)' }}>
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px] text-[#003746]">tips_and_updates</span>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Análise do Acervo</p>
             </div>
-            <h4 className="mb-4 text-2xl font-bold leading-tight">
-              Normalização de Descrições sugerida para {embStatus ? Math.max(embStatus.totalItems - embStatus.itemsWithEmbedding, 0) : 142} itens de acervo.
+            <h4 className="text-base font-semibold text-slate-900">
+              {embStatus ? Math.max(embStatus.totalItems - embStatus.itemsWithEmbedding, 0) : 0} {' '}
+              iten(s) do acervo sem indexação semântica.
             </h4>
-            <p className="max-w-lg text-sm text-[#85c0d7]">
-              Identificamos duplicidades semânticas em itens de &ldquo;Terraplanagem&rdquo; e &ldquo;Pavimentação&rdquo;.
-              A normalização permitirá cruzamentos mais precisos com novos editais.
+            <p className="mt-1.5 max-w-lg text-sm text-slate-500">
+              Itens sem embedding não participam do cruzamento semântico.
+              Rode a normalização para garantir que o acervo completo seja considerado.
             </p>
-            <div className="mt-8 flex items-center gap-4">
-              <button onClick={handleNormalize} disabled={normalizing}
-                className="rounded-lg bg-white px-6 py-2 text-sm font-bold text-[#003746] transition-colors hover:bg-[#85c0d7] disabled:opacity-50">
-                Revisar Sugestões
-              </button>
-              <button className="rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white/80 transition-colors hover:text-white">
-                Agora Não
-              </button>
-            </div>
           </div>
-          <div className="absolute -bottom-12 -right-12 h-64 w-64 rounded-full bg-white/5 blur-3xl" />
-          <div className="absolute right-8 top-1/2 -translate-y-1/2 opacity-10">
-            <span className="material-symbols-outlined text-[200px]" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+          <div className="mt-6 flex items-center gap-3">
+            <button onClick={handleNormalize} disabled={normalizing}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#003746] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#004f63] disabled:opacity-50">
+              {normalizing && <span className="material-symbols-outlined animate-spin text-[16px]">sync</span>}
+              Normalizar Descrições
+            </button>
           </div>
         </div>
 
@@ -766,7 +762,7 @@ export default function CatsPage() {
       {/* ── Chat FAB ── */}
       <button
         onClick={() => setChatOpen(true)}
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#003746] to-[#00526a] text-white shadow-xl transition-all hover:scale-105 hover:shadow-2xl"
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#003746] text-white shadow-lg transition-all hover:bg-[#004f63] hover:shadow-xl"
         title="Assistente de Acervo"
       >
         <span

@@ -153,7 +153,7 @@ export function ItemsTableRow({ item, submitting, onOverride, onExceptionalOverr
       {/* Expanded detail */}
       {expanded && (
         <tr>
-          <td colSpan={7} className="bg-slate-50/30 px-6 pb-5 pt-2" style={{ borderLeft: `3px solid ${cfg.color}` }}>
+          <td colSpan={7} className="px-6 pb-5 pt-2" style={{ backgroundColor: `${cfg.color}0d`, borderTop: `1px solid ${cfg.color}30` }}>
             <div className="space-y-4">
               {/* AI Justification */}
               {item.aiJustificativa && (

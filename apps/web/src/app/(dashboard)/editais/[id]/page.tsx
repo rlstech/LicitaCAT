@@ -322,7 +322,7 @@ function TabAtestados({ hab }: { hab: Habilitacao }) {
           subtitle={item.caracteristicasExigidas ?? item.observacao}
           badge={
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-              item.exigeCat ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-500'
+              item.exigeCat ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'
             }`}>
               {item.exigeCat ? 'Exige CAT' : 'Sem CAT'}
             </span>

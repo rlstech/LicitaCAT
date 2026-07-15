@@ -672,7 +672,7 @@ function DetalheDrawer({
         <button
           onClick={() => onImportar(item)}
           disabled={importing || loadingDados}
-          className="w-full bg-gradient-to-r from-brand-600 to-brand-500 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-60 transition-opacity shadow-lg shadow-brand-600/20"
+          className="w-full bg-brand-600 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:bg-brand-700 disabled:opacity-60 transition-colors"
         >
           {importing ? (
             <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
@@ -1198,7 +1198,7 @@ export default function BuscarPncpPage() {
             <button
               onClick={() => usarCache ? buscarCache(1) : buscar()}
               disabled={loading}
-              className="w-full bg-gradient-to-r from-brand-600 to-brand-500 text-white py-2 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-60 transition-opacity"
+              className="w-full bg-brand-600 text-white py-2 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 hover:bg-brand-700 disabled:opacity-60 transition-colors"
             >
               {loading ? (
                 <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">

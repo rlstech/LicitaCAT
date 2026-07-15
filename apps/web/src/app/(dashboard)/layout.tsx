@@ -53,7 +53,7 @@ export default function DashboardLayout({
         <div className="mt-auto px-4 pb-4">
           <Link
             href="/editais/upload"
-            className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:shadow-md hover:brightness-110"
+            className="flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
           >
             <span className="material-symbols-outlined text-[20px]">add</span>
             Novo Edital

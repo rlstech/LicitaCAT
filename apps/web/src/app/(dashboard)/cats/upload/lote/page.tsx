@@ -148,7 +148,7 @@ export default function UploadCatLotePage() {
         </div>
 
         {noProfissionais ? (
-          <div className="px-5 py-4" style={{ borderLeft: '3px solid #d97706', backgroundColor: 'rgba(251,191,36,0.05)' }}>
+          <div className="rounded-lg px-5 py-4" style={{ border: '1px solid rgba(217,119,6,0.25)', backgroundColor: 'rgba(254,243,199,0.5)' }}>
             <p className="text-sm text-amber-800">
               Nenhum profissional cadastrado.{' '}
               <Link href="/cats/profissionais" className="font-semibold underline decoration-amber-400 hover:text-amber-900">
@@ -339,7 +339,7 @@ export default function UploadCatLotePage() {
       {allDone && errorCount === 0 && (
         <div
           className="mt-4 rounded-xl px-5 py-4"
-          style={{ border: '1px solid rgba(22,163,74,0.2)', borderLeft: '3px solid #16a34a', backgroundColor: 'rgba(240,253,244,0.8)' }}
+          style={{ border: '1px solid rgba(22,163,74,0.3)', backgroundColor: 'rgba(240,253,244,0.8)' }}
         >
           <p className="text-sm font-semibold text-green-800">
             {doneCount} CAT{doneCount !== 1 ? 's enviadas' : ' enviada'} com sucesso!

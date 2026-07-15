@@ -330,31 +330,29 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          {/* Insight Técnico */}
-          <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-brand-500 p-5 text-white shadow-sm">
-            <span className="material-symbols-outlined text-[22px] text-white/80">psychology</span>
-            <h3 className="mt-3 text-sm font-semibold">Insight Técnico</h3>
-            <p className="mt-2 text-xs text-white/80 leading-relaxed">
-              Seu acervo tem forte cobertura em obras de pavimentação e saneamento.
-              Considere ampliar CATs em edificações para aumentar a elegibilidade em 35% dos editais disponíveis.
+          {/* Dica de acervo */}
+          <div className="rounded-2xl p-5" style={{ border: '1px solid var(--border)', backgroundColor: 'var(--surface-low, #e6f6ff)' }}>
+            <div className="flex items-center gap-2 text-[#003746]">
+              <span className="material-symbols-outlined text-[20px]">psychology</span>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Dica</p>
+            </div>
+            <p className="mt-3 text-sm font-medium text-slate-800 leading-snug">
+              Amplie CATs em edificações para aumentar a elegibilidade em editais do segmento.
             </p>
             <Link
               href="/cruzamentos"
-              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/30"
+              className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#003746] hover:underline"
             >
               <span className="material-symbols-outlined text-[16px]">trending_up</span>
-              Analisar Match Técnico
+              Ver cruzamentos
             </Link>
           </div>
 
           {/* Mapa placeholder */}
-          <div className="relative flex h-48 items-center justify-center rounded-2xl bg-slate-200 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent" />
-            <div className="relative text-center">
-              <span className="material-symbols-outlined text-[28px] text-white/90">map</span>
-              <p className="mt-1 text-xs font-semibold text-white/90 uppercase tracking-wider">Mapa de Obras Ativas</p>
-              <p className="text-[10px] text-white/60">Em breve</p>
-            </div>
+          <div className="flex h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-[#cfe6f2] bg-[#f3faff] text-center">
+            <span className="material-symbols-outlined text-[28px] text-slate-300">map</span>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Mapa de Obras</p>
+            <p className="mt-0.5 text-[10px] text-slate-300">Em breve</p>
           </div>
         </div>
       </div>

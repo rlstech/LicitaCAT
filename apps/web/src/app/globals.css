@@ -67,6 +67,15 @@
   }
 }
 
+/* ── Typing indicator (chat) ─────────────────────────────────────────────── */
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30%            { opacity: 1;   transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="animation: typing"] { animation: none !important; opacity: 0.6; }
+}
+
 /* ── Print ──────────────────────────────────────────────────────────────── */
 @media print {
   [data-print-hide] { display: none !important; }
