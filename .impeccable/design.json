@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-08T00:00:00Z",
+  "title": "Design System: LicitaCAT",
+  "extensions": {
+    "colorMeta": {
+      "primary":           { "role": "primary",   "displayName": "Petrol Profundo",     "canonical": "#003746", "tonalRamp": ["#001419","#001e27","#002a36","#003746","#004f63","#0e7490","#38bcd4","#7dd8eb","#c0eff8","#e8f9fd"] },
+      "primary-mid":       { "role": "primary",   "displayName": "Petrol Médio",         "canonical": "#004f63", "tonalRamp": ["#001e27","#002a36","#003746","#004f63","#0e7490","#38bcd4","#7dd8eb","#c0eff8","#e8f9fd","#f3faff"] },
+      "primary-deep":      { "role": "primary",   "displayName": "Petrol Noturno",       "canonical": "#002a36", "tonalRamp": ["#000e12","#001419","#001e27","#002a36","#003746","#004f63","#0e7490","#38bcd4","#a8e8f4","#e8f9fd"] },
+      "canvas":            { "role": "neutral",   "displayName": "Canvas Glacial",       "canonical": "#f3faff", "tonalRamp": ["#c0dff0","#cce5f4","#d8ecf8","#e1f1fb","#eaf5fd","#f0f8ff","#f3faff","#f7fbff","#fafcff","#ffffff"] },
+      "surface-low":       { "role": "neutral",   "displayName": "Superfície Baixa",     "canonical": "#e6f6ff", "tonalRamp": ["#aed6ee","#c0dff0","#cce5f4","#d8ecf8","#e1f1fb","#e6f6ff","#edf9ff","#f3faff","#f8fcff","#ffffff"] },
+      "surface-container": { "role": "neutral",   "displayName": "Superfície Container", "canonical": "#dbf1fe", "tonalRamp": ["#a0cde8","#b8daef","#c8e4f4","#d5ecf8","#dbf1fe","#e4f4ff","#edf8ff","#f3faff","#f8fcff","#ffffff"] },
+      "surface-high":      { "role": "neutral",   "displayName": "Superfície Alta",      "canonical": "#cfe6f2", "tonalRamp": ["#8bbdd8","#a3cce2","#b8daef","#c6e3f5","#cfe6f2","#daeef8","#e6f4fb","#f0f8fd","#f7fbff","#ffffff"] },
+      "outline":           { "role": "neutral",   "displayName": "Contorno",             "canonical": "#70787c", "tonalRamp": ["#1c2426","#2e3638","#3f4a4d","#505c60","#606d71","#70787c","#8a9295","#a4abae","#c4cacc","#e4e7e8"] },
+      "outline-variant":   { "role": "neutral",   "displayName": "Contorno Suave",       "canonical": "#c0c8cc", "tonalRamp": ["#50595c","#626b6e","#757e82","#8a9295","#9ea6aa","#aeb6ba","#c0c8cc","#d0d8db","#e0e8eb","#f0f4f5"] },
+      "success":           { "role": "semantic",  "displayName": "Esmeralda Status",     "canonical": "#10b981", "tonalRamp": ["#064e3b","#065f46","#047857","#059669","#10b981","#34d399","#6ee7b7","#a7f3d0","#d1fae5","#f0fdf4"] },
+      "warning":           { "role": "semantic",  "displayName": "Âmbar Atenção",        "canonical": "#f59e0b", "tonalRamp": ["#78350f","#92400e","#b45309","#d97706","#f59e0b","#fbbf24","#fcd34d","#fde68a","#fef3c7","#fffbeb"] },
+      "error":             { "role": "semantic",  "displayName": "Vermelho Crítico",     "canonical": "#ba1a1a", "tonalRamp": ["#450a0a","#7f1d1d","#991b1b","#ba1a1a","#dc2626","#ef4444","#f87171","#fca5a5","#fecaca","#fff1f2"] },
+      "accent-editais":    { "role": "domain",    "displayName": "Violeta Edital",       "canonical": "#7c3aed", "tonalRamp": ["#2e1065","#4c1d95","#5b21b6","#6d28d9","#7c3aed","#8b5cf6","#a78bfa","#c4b5fd","#ddd6fe","#f5f3ff"] },
+      "accent-cats":       { "role": "domain",    "displayName": "Ciano CAT",            "canonical": "#0e7490", "tonalRamp": ["#082f49","#0c4a6e","#075985","#0369a1","#0e7490","#0891b2","#06b6d4","#67e8f9","#a5f3fc","#ecfeff"] },
+      "accent-crossings":  { "role": "domain",    "displayName": "Esmeralda Cruzamento", "canonical": "#059669", "tonalRamp": ["#022c22","#064e3b","#065f46","#047857","#059669","#10b981","#34d399","#6ee7b7","#a7f3d0","#f0fdf4"] },
+      "accent-cost":       { "role": "domain",    "displayName": "Ardósia Custo",        "canonical": "#64748b", "tonalRamp": ["#1e293b","#2d3748","#374151","#475569","#64748b","#94a3b8","#cbd5e1","#e2e8f0","#f1f5f9","#f8fafc"] },
+      "ink":               { "role": "neutral",   "displayName": "Tinta",                "canonical": "#0f172a", "tonalRamp": ["#000000","#030712","#0f172a","#1e293b","#334155","#475569","#64748b","#94a3b8","#cbd5e1","#f1f5f9"] },
+      "ink-secondary":     { "role": "neutral",   "displayName": "Tinta Secundária",     "canonical": "#475569", "tonalRamp": ["#0f172a","#1e293b","#334155","#475569","#64748b","#94a3b8","#cbd5e1","#e2e8f0","#f1f5f9","#f8fafc"] },
+      "ink-muted":         { "role": "neutral",   "displayName": "Tinta Muda",           "canonical": "#94a3b8", "tonalRamp": ["#334155","#475569","#64748b","#94a3b8","#b0bec5","#cbd5e1","#e2e8f0","#f1f5f9","#f8fafc","#ffffff"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display",  "purpose": "Títulos de página — uma ocorrência por tela." },
+      "title":   { "displayName": "Title",    "purpose": "Títulos de seção, cabeçalhos de card, labels de campo semibold." },
+      "body":    { "displayName": "Body",     "purpose": "Texto de tabela, descrições, conteúdo principal. Linha máxima 65ch." },
+      "label":   { "displayName": "Label",    "purpose": "Cabeçalhos de tabela, metadados de seção. Sempre UPPERCASE." },
+      "metric":  { "displayName": "Metric",   "purpose": "Valores numéricos em MetricCards e gauges. Sempre tabular-nums." }
+    },
+    "shadows": [
+      { "name": "card-hover",    "value": "0 1px 3px rgba(15,23,42,0.08), 0 0 0 1px rgba(15,23,42,0.06)", "purpose": "Hover de MetricCards e cards clicáveis. Nunca em repouso." },
+      { "name": "nav-active",    "value": "0 1px 3px rgba(15,23,42,0.08), 0 0 0 1px rgba(15,23,42,0.07)", "purpose": "Item de navegação ativo — cartão branco sobre sidebar azulado." }
+    ],
+    "motion": [
+      { "name": "transition-colors",  "value": "transition-colors duration-150 ease-out",    "purpose": "Mudanças de cor de fundo e texto em botões e badges." },
+      { "name": "transition-shadow",  "value": "transition-shadow duration-200 ease-out",    "purpose": "Aparecimento de shadow em hover de cards." },
+      { "name": "nav-slide",          "value": "transition-all duration-200 ease-out",       "purpose": "translate-x-1 no item de nav ativo." }
+    ],
+    "breakpoints": [
+      { "name": "sm",  "value": "640px" },
+      { "name": "md",  "value": "768px" },
+      { "name": "lg",  "value": "1024px" },
+      { "name": "xl",  "value": "1280px" },
+      { "name": "2xl", "value": "1536px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "CTA de maior peso. Petrol Profundo com branco. Um por contexto.",
+      "html": "<button class=\"ds-btn-primary\">Iniciar Cruzamento</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; background: #003746; color: #ffffff; padding: 8px 16px; font-size: 14px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: background-color 150ms ease-out; font-family: Inter, system-ui, sans-serif; } .ds-btn-primary:hover { background: #004f63; } .ds-btn-primary:active { background: #002a36; } .ds-btn-primary:focus-visible { outline: 2px solid #003746; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Ação de menor peso. Borda sem fundo sólido.",
+      "html": "<button class=\"ds-btn-secondary\">Ver Detalhes</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; gap: 6px; background: transparent; color: #003746; padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid rgba(15,23,42,0.10); border-radius: 8px; cursor: pointer; transition: background-color 150ms ease-out, border-color 150ms ease-out; font-family: Inter, system-ui, sans-serif; } .ds-btn-secondary:hover { background: #e6f6ff; border-color: rgba(15,23,42,0.18); } .ds-btn-secondary:focus-visible { outline: 2px solid #003746; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Badge — Success",
+      "kind": "chip",
+      "refersTo": "badge-success",
+      "description": "Estado concluído, requisito atendido, recomendação aprovada.",
+      "html": "<span class=\"ds-badge ds-badge-success\">Concluído</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; padding: 2px 8px; font-size: 12px; font-weight: 500; border-radius: 4px; font-family: Inter, system-ui, sans-serif; line-height: 1.5; } .ds-badge-success { background: #f0fdf4; color: #15803d; } .ds-badge-warning { background: #fffbeb; color: #92400e; } .ds-badge-error { background: #fff1f2; color: #9f1239; } .ds-badge-processing { background: #e6f6ff; color: #003746; } .ds-badge-default { background: #f1f5f9; color: #475569; }"
+    },
+    {
+      "name": "Metric Card",
+      "kind": "card",
+      "refersTo": "metric-card",
+      "description": "KPI card com acento de domínio no topo. Hover revela shadow.",
+      "html": "<div class=\"ds-metric-card ds-metric-editais\"><div class=\"ds-metric-header\"><span class=\"ds-metric-title\">Editais</span></div><div class=\"ds-metric-value\">12</div><div class=\"ds-metric-sub\">3 aguardando revisão</div></div>",
+      "css": ".ds-metric-card { display: flex; flex-direction: column; gap: 4px; background: #ffffff; border: 1px solid rgba(15,23,42,0.10); border-radius: 12px; padding: 16px; transition: box-shadow 200ms ease-out; cursor: pointer; font-family: Inter, system-ui, sans-serif; } .ds-metric-card:hover { box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 0 0 1px rgba(15,23,42,0.06); } .ds-metric-editais { border-top: 3px solid #7c3aed; } .ds-metric-cats { border-top: 3px solid #0e7490; } .ds-metric-crossings { border-top: 3px solid #059669; } .ds-metric-cost { border-top: 3px solid #64748b; } .ds-metric-header { display: flex; align-items: center; justify-content: space-between; } .ds-metric-title { font-size: 12px; font-weight: 500; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; } .ds-metric-value { font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 4px; } .ds-metric-sub { font-size: 12px; color: #94a3b8; }"
+    },
+    {
+      "name": "Nav Item — Active",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "Item de navegação ativo — cartão branco flutuando sobre sidebar azulado.",
+      "html": "<a class=\"ds-nav-item ds-nav-active\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M3 12L12 3L21 12V20H15V14H9V20H3V12Z\" fill=\"#004f63\"/></svg><span>Dashboard</span><span class=\"ds-nav-dot\"></span></a>",
+      "css": ".ds-nav-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; font-size: 14px; text-decoration: none; transition: all 200ms ease-out; font-family: Inter, system-ui, sans-serif; position: relative; } .ds-nav-item { color: #475569; } .ds-nav-item:hover { background: rgba(207,230,242,0.5); color: #003746; } .ds-nav-active { background: #ffffff; color: #003746; font-weight: 600; transform: translateX(4px); box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 0 0 1px rgba(15,23,42,0.07); } .ds-nav-dot { display: block; width: 6px; height: 6px; border-radius: 9999px; background: #004f63; margin-left: auto; }"
+    },
+    {
+      "name": "Score Gauge",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Gauge SVG de 270° para score de aderência. Cor semântica por faixa.",
+      "html": "<div class=\"ds-gauge-wrap\"><svg width=\"96\" height=\"96\" viewBox=\"0 0 96 96\"><path d=\"M 14.34 81.66 A 40 40 0 1 1 81.66 81.66\" fill=\"none\" stroke=\"#e6f6ff\" stroke-width=\"8\" stroke-linecap=\"round\" opacity=\"0.3\"/><path d=\"M 14.34 81.66 A 40 40 0 1 1 81.66 81.66\" fill=\"none\" stroke=\"#10b981\" stroke-width=\"8\" stroke-linecap=\"round\" stroke-dasharray=\"219.9\" stroke-dashoffset=\"44\"/></svg><div class=\"ds-gauge-label\"><span class=\"ds-gauge-score\">80%</span><span class=\"ds-gauge-sub\">SCORE</span></div></div>",
+      "css": ".ds-gauge-wrap { position: relative; display: flex; align-items: center; justify-content: center; width: 96px; height: 96px; } .ds-gauge-label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 8px; } .ds-gauge-score { font-size: 22px; font-weight: 800; color: #003746; line-height: 1; font-variant-numeric: tabular-nums; font-family: Inter, system-ui, sans-serif; } .ds-gauge-sub { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; font-family: Inter, system-ui, sans-serif; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": null,
+      "description": "Campo de texto padrão. Borda neutra, focus ring petrol.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-label\" for=\"ds-inp\">Número do Edital</label><input class=\"ds-input\" id=\"ds-inp\" type=\"text\" placeholder=\"Ex: 001/2025\"></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; font-family: Inter, system-ui, sans-serif; } .ds-label { font-size: 12px; font-weight: 600; color: #0f172a; } .ds-input { padding: 8px 12px; font-size: 14px; color: #0f172a; background: #ffffff; border: 1px solid rgba(15,23,42,0.10); border-radius: 8px; outline: none; transition: border-color 150ms ease-out, box-shadow 150ms ease-out; font-family: Inter, system-ui, sans-serif; } .ds-input::placeholder { color: #94a3b8; } .ds-input:focus { border-color: rgba(15,23,42,0.18); box-shadow: 0 0 0 2px rgba(0,55,70,0.15); } .ds-input:disabled { opacity: 0.5; cursor: not-allowed; background: #f8fafc; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "O Blueprint Técnico",
+    "overview": "O sistema visual opera como um documento de engenharia: hierarquia clara, informação densa mas legível, zero decoração sem função. Cada componente existe para transportar dados — scores de aderência, requisitos técnicos, cronogramas de licitação — não para impressionar. Onde um sistema de consumo colocaria uma ilustração, este coloca um dado.\n\nA paleta é construída em torno de um Petrol Profundo (#003746) sobre um canvas azulado quase-branco (#f3faff). A sensação é a de um ambiente de trabalho com iluminação neutra: sem dramatismo, sem calor artificial. O contraste entre fundo e superfície é tonal, não cromático — elevação expressa por claridade, não por sombra.\n\nA interface rejeita explicitamente: apps coloridos de consumo, dashboards genéricos de BI, LegalTech americano formal demais, e portais governamentais desatualizados.",
+    "keyCharacteristics": [
+      "Fundo ligeiramente azulado (#f3faff) que afasta o branco de escritório sem chamar atenção",
+      "Elevação por claridade: canvas (#f3faff) → sidebar (#e6f6ff) → cards (#ffffff)",
+      "Hierarquia de tinta em três níveis: primário (#0f172a), secundário (#475569), mudo (#94a3b8)",
+      "Cor primária restrita a ações e estados ativos — nunca decorativa",
+      "Acentos de domínio para criar territórios visuais (editais, CATs, cruzamentos)",
+      "Tipografia uppercase com tracking como linguagem de metadados técnicos"
+    ],
+    "rules": [
+      { "name": "A Regra da Raridade",        "body": "O Petrol Profundo (#003746) aparece em no máximo 15% de qualquer tela. Seu peso visual depende da escassez.", "section": "colors" },
+      { "name": "A Regra dos Territórios",     "body": "Os acentos de domínio (violeta, ciano, esmeralda) são fronteiras, não decoração. Usar violeta fora do contexto de editais contamina o mapa cognitivo do usuário.", "section": "colors" },
+      { "name": "A Regra do Uppercase Técnico","body": "Labels uppercase com tracking sinalizam metainformação — não decoração. Nunca usar uppercase em texto de leitura ou CTAs.", "section": "typography" },
+      { "name": "A Regra Tabular",             "body": "Todo número que pode mudar usa font-variant-numeric: tabular-nums. Colunas de dados não tremem ao atualizar.", "section": "typography" },
+      { "name": "A Regra do Plano por Padrão", "body": "Sombra é estado, não estilo. Uma interface com sombras permanentes não tem linguagem de elevação — tem decoração.", "section": "elevation" },
+      { "name": "A Regra da Borda Antes da Sombra","body": "Quando precisar de separação, usar border: 1px solid var(--border). Sombra só entra quando a borda não resolve.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do usar border: 1px solid var(--border) como separador padrão.",
+      "Do expressar elevação por claridade: canvas #f3faff → sidebar #e6f6ff → cards #ffffff.",
+      "Do usar font-variant-numeric: tabular-nums em toda coluna de número.",
+      "Do usar uppercase + tracking como linguagem de metadados: cabeçalhos de tabela, labels de seção.",
+      "Do acompanhar toda sinalização por cor com texto ou ícone.",
+      "Do usar os acentos de domínio apenas nos territórios corretos.",
+      "Do animar com transition-colors ou transition-shadow em duration-150 a duration-200."
+    ],
+    "donts": [
+      "Don't usar border-left colorido com mais de 1px como acento decorativo.",
+      "Don't parecer app de consumo colorido (Notion, Slack colorido).",
+      "Don't fazer dashboards genéricos de BI com grids de charts iguais.",
+      "Don't imitar LegalTech americano (Clio, LexisNexis).",
+      "Don't remeter a portais gov antigos (ComprasNet, e-licitações).",
+      "Don't usar gradientes em texto (background-clip: text).",
+      "Don't usar glassmorphism decorativo.",
+      "Don't usar a hero-metric template (número grande + stat de suporte + gradiente).",
+      "Don't adicionar sombras decorativas permanentes.",
+      "Don't misturar acentos de domínio fora de seus territórios."
+    ]
+  }
+}

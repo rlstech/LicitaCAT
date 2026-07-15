@@ -1,15 +1,21 @@
-# LicitaCAT — Guia do Projeto para Claude Code
-Este arquivo é lido automaticamente pelo Claude Code em toda sessão.
-**Nunca delete ou mova este arquivo da raiz do repositório.**
----
-## 1. O que é este projeto
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## O que é este projeto
+
 **LicitaCAT** é uma plataforma SaaS multi-tenant que usa IA para:
 1. Extrair requisitos de qualificação técnica de editais de licitação (PDFs grandes, 100+ páginas)
 2. Armazenar e estruturar o acervo de CATs (Certidões de Acervo Técnico) de empresas de engenharia
 3. Cruzar semanticamente os requisitos dos editais com as CATs e gerar um score de aderência + recomendação de participação
+4. Monitorar novas licitações via integração com o PNCP (Portal Nacional de Compras Públicas)
+
 **Usuários-alvo:** empresas de engenharia brasileiras que participam de licitações públicas.
+
 ---
-## 2. Stack tecnológico
+
+## Stack
+
 | Camada | Tecnologia |
 |--------|-----------|
 | Frontend | Next.js 14 (App Router) + TypeScript + Tailwind CSS |
@@ -17,132 +23,248 @@ Este arquivo é lido automaticamente pelo Claude Code em toda sessão.
 | Banco de dados | PostgreSQL 16 + extensão pgvector |
 | ORM | Drizzle ORM |
 | Fila de jobs | BullMQ (Redis) |
-| Storage de arquivos | AWS S3 (ou compatível: MinIO para dev local) |
+| Storage | AWS S3 / MinIO (dev local) |
 | OCR | Google Document AI |
-| LLM principal | Google Gemini API (`gemini-3-flash-preview`) |
-| Embeddings | Google Gemini Embeddings (`gemini-embedding-2-preview`, 768D, endpoint v1beta) |
-| Autenticação | Clerk |
-| Monorepo | Turborepo |
+| LLM | Google Gemini (`gemini-3-flash-preview`) |
+| Embeddings | Google Gemini (`gemini-embedding-2-preview`, 768D, endpoint `v1beta`) |
+| Autenticação | Better Auth (email+senha, sessões via `ba_session`/`ba_user`) |
+| E-mail | Resend (reset de senha) |
+| Monorepo | Turborepo + pnpm |
 | Testes | Vitest (unit) + Playwright (e2e) |
-| CI/CD | GitHub Actions |
-| Containerização | Docker Swarm (produção) + Docker Compose (dev) |
+| Deploy | Docker Swarm (produção) + Docker Compose (dev) |
+
 ---
-## 3. Estrutura do monorepo
-```
-licitacat/
-├── apps/
-│   ├── web/              # Next.js frontend
-│   └── api/              # Fastify backend
-├── packages/
-│   ├── db/               # Schema Drizzle + migrations + seed
-│   ├── ai/               # Wrappers de LLM, OCR, embeddings
-│   ├── queue/            # Definições de jobs BullMQ
-│   └── shared/           # Tipos TypeScript compartilhados, validações Zod
-├── docker-compose.yml    # PostgreSQL + Redis + MinIO para dev
-├── turbo.json
-├── package.json
-└── CLAUDE.md             # este arquivo
-```
----
-## 4. Modelo de dados — tabelas principais
-> Banco PostgreSQL com Row-Level Security (RLS) por `tenant_id` em todas as tabelas de negócio.
-### Multi-tenancy e acesso
-- **`tenants`** — empresas-cliente (id, name, slug, plan, max_editais_per_month, max_cats_stored, active)
-- **`users`** — (id, tenant_id, email, name, role: admin|analyst|viewer, auth_provider_id, active)
-- **`audit_logs`** — imutável (id, tenant_id, user_id, action, entity_type, entity_id, metadata JSONB)
-### Editais
-- **`editais`** — (id, tenant_id, uploaded_by, file_name, file_url, page_count, pdf_type: copyable|scanned|mixed, status: uploaded|ocr_processing|extracting|review_pending|ready|error, orgao_licitante, numero_edital, modalidade, objeto, valor_estimado, data_abertura, ai_extraction_cost_usd, ocr_cost_usd)
-- **`edital_requisitos`** — (id, tenant_id, edital_id, lote, categoria, descricao, trecho_original, pagina_referencia, quantitativo_exigido, unidade, ai_confidence_score 0-100, status: ai_extracted|human_approved|human_edited|human_rejected, edited_by, **embedding VECTOR(768)**, embedding_model text)
-### Acervo de CATs
-- **`profissionais_tecnicos`** — (id, tenant_id, nome, numero_crea_cau, conselho: CREA|CAU, uf_registro, ativo)
-- **`cats`** — (id, tenant_id, profissional_id, uploaded_by, file_name, file_url, file_type: pdf_scanned|pdf_copyable|excel|manual, numero_cat, empresa_contratante, tipo_obra_servico, descricao_tecnica, quantitativo_valor, quantitativo_unidade, data_inicio, data_conclusao, status_extracao, ai_confidence_score, **embedding VECTOR(768)**, embedding_model text, **search_vector tsvector GENERATED**, ativo)
-- **`cat_itens`** — (id, tenant_id, cat_id, numero_item, descricao, unidade, quantidade NUMERIC(15,4), origem: ai_extracted|human_added|excel_imported, ai_confidence_score, **embedding VECTOR(768)**, embedding_model text, **search_vector tsvector GENERATED**, ordem)
-### Cruzamento
-- **`crossings`** — (id, tenant_id, edital_id, triggered_by, status, score_aderencia 0-100, total_requisitos, requisitos_atendidos, requisitos_com_ressalva, requisitos_gap, recomendacao: participar|participar_com_ressalvas|nao_participar, recomendacao_justificativa, ai_cost_usd, processing_time_seconds)
-- **`crossing_items`** — (id, tenant_id, crossing_id, requisito_id, resultado: atendido|atendido_parcialmente|gap, ai_justificativa, score_similaridade_max, human_override, human_override_by, human_override_note)
-- **`crossing_item_cats`** — (id, crossing_item_id, cat_id, **cat_item_id nullable**, nivel_match: cat|item, score_similaridade NUMERIC(5,4), avaliacao_llm: atende|atende_parcialmente|nao_atende, justificativa_llm, rank_posicao)
-### Jobs
-- **`processing_jobs`** — (id, tenant_id, job_type: ocr|edital_extraction|cat_extraction|crossing|embedding_gen, entity_type, entity_id, status: queued|running|completed|failed|retrying, attempt_count max 3, error_message, started_at, completed_at, cost_usd)
-### Índices críticos (além de PKs/FKs)
-```sql
--- pgvector HNSW para busca semântica (768 dimensões, gemini-embedding-2-preview)
-CREATE INDEX ON edital_requisitos USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX ON cats             USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX ON cat_itens        USING hnsw (embedding vector_cosine_ops);
--- FTS (migration 0009) — stemming português via unaccent + to_tsvector
-CREATE INDEX cats_fts_idx     ON cats      USING gin (search_vector);
-CREATE INDEX cat_itens_fts_idx ON cat_itens USING gin (search_vector);
--- Compostos para queries de tenant
-CREATE INDEX ON edital_requisitos (tenant_id, edital_id);
-CREATE INDEX ON cat_itens         (tenant_id, cat_id);
-CREATE INDEX ON cats              (tenant_id, tipo_obra_servico);
-CREATE INDEX ON crossings         (tenant_id, edital_id);
-CREATE INDEX ON processing_jobs   (tenant_id, status);
-CREATE INDEX ON audit_logs        (tenant_id, created_at);
-```
----
-## 5. Convenções de código
-### Geral
-- **TypeScript strict mode** em todos os packages — sem `any` explícito
-- **Zod** para validação de inputs em todas as rotas da API e em todos os jobs
-- **Drizzle ORM** para todas as queries — sem SQL raw exceto para operações pgvector e migrations complexas
-- Nomenclatura: `camelCase` no código, `snake_case` no banco
-- Todas as respostas de erro da API seguem o formato: `{ error: { code: string, message: string, details?: unknown } }`
-### Backend (Fastify)
-- Cada domínio tem seu próprio plugin Fastify em `apps/api/src/modules/<dominio>/`
-- Estrutura de módulo: `routes.ts` + `service.ts` + `schema.ts` (Zod) + `repository.ts` (Drizzle)
-- Autenticação via middleware Clerk — `request.tenantId` e `request.userId` disponíveis em todas as rotas protegidas
-- RLS ativado: toda query ao banco **deve** passar `tenant_id` explicitamente — nunca confiar só no RLS como única barreira
-### Frontend (Next.js)
-- App Router com Server Components por padrão — Client Components apenas onde necessário
-- Fetch de dados via Server Actions ou Route Handlers — não usar `useEffect` para busca de dados
-- UI components em `apps/web/src/components/ui/` (shadcn/ui como base)
-- Estado global: Zustand (somente para estado de UI complexo — ex: polling de jobs)
-### Jobs (BullMQ)
-- Cada job type tem seu processor em `packages/queue/src/processors/<job_type>.ts`
-- Todo job deve: (1) atualizar `processing_jobs.status` para `running` no início, (2) registrar custo de IA em `processing_jobs.cost_usd` ao final, (3) tratar erros com retry automático até `attempt_count = 3`
-- Jobs de IA nunca fazem chamadas síncronas — sempre via fila
-### IA / LLM
-- Todas as chamadas ao Gemini API ficam em `packages/ai/src/`
-- LLM client: `packages/ai/src/llm/client.ts` — funções `callLlm`, `callLlmWithCache`, `createLlmCache`
-- Embedding client: `packages/ai/src/embeddings/client.ts` — modelo `gemini-embedding-2-preview`, 768D, endpoint `v1beta`
-- Prompts são arquivos `.ts` separados em `packages/ai/src/prompts/` — nunca inline no código
-- Toda chamada LLM deve: logar tokens consumidos, calcular custo estimado em USD e persistir em `processing_jobs.cost_usd`
-- Respostas do LLM que precisam ser estruturadas usam XML tags de output — nunca confiar em JSON puro sem validação Zod
-- Context caching disponível via `createLlmCache` / `callLlmWithCache` — requer mínimo ~32K tokens para ser efetivo no Gemini
----
-## 6. Segurança — regras inegociáveis
-- **Nunca** expor `tenant_id` de outros tenants em nenhuma resposta de API
-- **Nunca** processar arquivo de um tenant no contexto de outro tenant
-- Todos os uploads de arquivo devem ser validados: tipo MIME, tamanho máximo (50MB por arquivo), extensões permitidas (.pdf, .xlsx, .xls)
-- URLs de S3 para download são sempre **pré-assinadas** com expiração de 15 minutos — nunca URLs públicas permanentes
-- Variáveis de ambiente sensíveis: nunca no código, sempre em `.env.local` (dev) ou secrets do CI/CD (prod)
----
-## 7. Variáveis de ambiente necessárias
+
+## Comandos
+
 ```bash
-# Banco
+# Desenvolvimento
+docker-compose up -d          # PostgreSQL + Redis + MinIO
+pnpm dev                      # api + web em paralelo (Turborepo)
+
+# Banco de dados
+pnpm db:migrate               # migrations pendentes (Drizzle)
+pnpm db:generate              # gerar migration a partir de mudanças no schema
+pnpm db:studio                # Drizzle Studio
+pnpm db:seed                  # seed de dados de teste
+
+# Qualidade
+pnpm lint
+pnpm typecheck
+pnpm test                     # Vitest (todos os packages)
+pnpm test:e2e                 # Playwright
+pnpm build
+
+# Deploy (Docker Swarm)
+docker build -f apps/api/Dockerfile -t licitacat-api:latest .
+docker build -f apps/web/Dockerfile \
+  --build-arg NEXT_PUBLIC_API_URL=... \
+  --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=... \
+  -t licitacat-web:latest .
+docker service update --force licitacat_worker
+docker service update --image licitacat-api:latest licitacat_api
+docker service update --image licitacat-web:latest licitacat_web
+
+# Re-embedding após troca de modelo
+docker cp direct-reembed.mjs <worker_container>:/app/direct-reembed.mjs
+docker exec <worker_container> node /app/direct-reembed.mjs
+```
+
+Rodar um único teste: `pnpm --filter <package> test -- --run <test-file-pattern>`
+
+---
+
+## Estrutura do monorepo
+
+```
+apps/
+  api/          # Fastify backend + worker entry point
+  web/          # Next.js frontend
+packages/
+  db/           # Schema Drizzle + migrations SQL + seed
+  ai/           # Wrappers Gemini LLM, OCR, embeddings, S3
+  auth/         # Better Auth config (email+senha, Resend, Drizzle adapter)
+  queue/        # Definições de filas BullMQ + processors + scheduler
+  shared/       # Tipos TypeScript + schemas Zod compartilhados
+```
+
+### API — módulos Fastify (`apps/api/src/modules/`)
+
+Cada módulo tem `routes.ts` + `service.ts` + `schema.ts` (Zod) + `repository.ts` (Drizzle):
+
+| Módulo | Prefixo |
+|--------|---------|
+| `editais` | `/api/editais` |
+| `cats` | `/api/cats` |
+| `crossings` | `/api/crossings` |
+| `uploads` | `/api/uploads` |
+| `dashboard` | `/api/dashboard` |
+| `users` | `/api/users` |
+| `pncp-cache` | `/api/pncp-cache` |
+
+### Frontend — rotas Next.js (`apps/web/src/app/`)
+
+- `(auth)/` — sign-in, sign-up, forgot-password, reset-password
+- `(dashboard)/editais/` — listagem, upload, upload em lote, buscar-pncp, `[id]`
+- `(dashboard)/cats/` — listagem, upload, upload em lote, profissionais, `[id]`
+- `(dashboard)/cruzamentos/` — listagem, `[id]`
+- `(dashboard)/dashboard/`
+- `(dashboard)/configuracoes/` — usuários, monitoramento-pncp
+
+---
+
+## Autenticação
+
+**Better Auth** substituiu o Clerk. A sessão é validada via Bearer token no header `Authorization`.
+
+- `packages/auth/src/index.ts` — instância `auth` com Drizzle adapter (tabelas `ba_user`, `ba_session`, `ba_account`, `ba_verification`)
+- `apps/api/src/middleware/auth.ts` — `requireAuth` busca a sessão em `ba_session`, faz auto-link por email se necessário, e popula `request.tenantId`, `request.userId`, `request.userRole`
+- `apps/web/src/lib/auth-client.ts` — `createAuthClient` do `better-auth/react` com `useSession`, `signIn`, `signOut`, `signUp`
+- Frontend usa `NEXT_PUBLIC_BETTER_AUTH_URL` para apontar ao Next.js (que proxy para Better Auth via `/api/auth/[...all]`)
+- Envio de reset de senha via Resend (variáveis `RESEND_API_KEY`, `RESEND_FROM_EMAIL`)
+
+---
+
+## Modelo de dados
+
+> Multi-tenant com RLS no PostgreSQL. Toda query **deve** passar `tenant_id` explicitamente.
+
+### Tabelas de negócio principais
+
+- **`tenants`** — empresas-cliente
+- **`users`** — `role: admin|analyst|viewer`, `auth_provider_id` aponta para `ba_user.id`
+- **`editais`** — status: `uploaded → ocr_processing → extracting → review_pending → ready | error`
+- **`edital_requisitos`** — requisitos extraídos por IA; `embedding VECTOR(768)`, `embedding_model text`; status: `ai_extracted | human_approved | human_edited | human_rejected`
+- **`cats`** — acervo de CATs; `embedding VECTOR(768)`, `search_vector tsvector GENERATED`
+- **`cat_itens`** — itens de cada CAT; `embedding VECTOR(768)`, `search_vector tsvector GENERATED`
+- **`crossings`** — resultado do cruzamento semântico; `score_aderencia 0-100`, `recomendacao: participar | participar_com_ressalvas | nao_participar`
+- **`crossing_items`** — por requisito; `resultado: atendido | atendido_parcialmente | gap`
+- **`crossing_item_cats`** — CATs/itens candidatos; `nivel_match: cat | item`, `score_similaridade NUMERIC(5,4)`
+- **`processing_jobs`** — rastreamento de jobs; `status: queued | running | completed | failed | retrying`
+
+### Tabelas de habilitação do edital (`edital-habilitacao.ts`)
+
+Extraídas pelo LLM junto com `edital_requisitos`:
+- `req_habilitacao_juridica`, `req_regularidade_fiscal`, `req_parcelas_relevancia` (com `embedding VECTOR(768)`), `req_atestados_profissionais`, `req_qualificacao_financeira`
+
+### Tabelas PNCP (`pncp-cache.ts`)
+
+- **`pncp_cache`** — licitações públicas sincronizadas do PNCP; global (sem RLS por tenant); `enrich_status: pending | done | error`
+- **`pncp_sync_config`** — configuração de monitoramento por tenant (UF, município, modalidade, palavras-chave)
+
+### Tabelas Better Auth (`auth.ts`)
+
+`ba_user`, `ba_session`, `ba_account`, `ba_verification` — gerenciadas pelo Better Auth, não editar manualmente.
+
+### Índices críticos
+
+```sql
+-- pgvector HNSW (768D, cosine)
+CREATE INDEX ON edital_requisitos USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX ON cats              USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX ON cat_itens         USING hnsw (embedding vector_cosine_ops);
+-- FTS português
+CREATE INDEX cats_fts_idx      ON cats      USING gin (search_vector);
+CREATE INDEX cat_itens_fts_idx ON cat_itens USING gin (search_vector);
+```
+
+---
+
+## Pipeline de processamento (BullMQ)
+
+Workers em `packages/queue/src/processors/`. Cada job deve: (1) atualizar `processing_jobs.status = 'running'`; (2) registrar custo IA em `processing_jobs.cost_usd`; (3) suportar retry até `attempt_count = 3`.
+
+| Fila | Trigger | Descrição |
+|------|---------|-----------|
+| `edital_extraction` | upload de edital | OCR → extração de requisitos + habilitação via LLM |
+| `cat_extraction` | upload de CAT | OCR / Document AI → extração de itens via LLM |
+| `crossing` | manual/API | Busca híbrida RRF + avaliação LLM por requisito |
+| `embedding_gen` | pós-extração | Gera embeddings Gemini para requisitos/CATs/itens |
+| `reembed_batch` | manual | Re-embedding em lote após troca de modelo |
+| `pncp_sync` | schedule (4h) | Sincroniza licitações do PNCP por tenant |
+| `pncp_enrich` | schedule (15m) | Preenche `dataEncerramentoProposta` |
+| `pncp_classify` | schedule (20m) | Classifica licitações por segmento de engenharia |
+| `pncp_purge` | schedule (02:00) | Remove licitações expiradas do cache |
+
+Schedules registrados em `packages/queue/src/scheduler.ts` ao iniciar o worker.
+
+---
+
+## IA / LLM
+
+- `packages/ai/src/llm/client.ts` — `callLlm`, `callLlmWithCache`, `createLlmCache`, `streamLlm` (todos via Gemini)
+- `packages/ai/src/llm/anthropic-client.ts` — wrapper alternativo para extração de edital via PDF inline (usa `callLlm` internamente, nome legacy)
+- `packages/ai/src/embeddings/client.ts` — `generateEmbedding`, constante `CURRENT_EMBEDDING_MODEL`
+- `packages/ai/src/ocr/document-ai.ts` — Google Document AI Form Parser para PDFs escaneados
+- `packages/ai/src/prompts/` — um arquivo `.ts` por prompt; nunca colocar prompts inline no código
+- Respostas estruturadas do LLM usam **XML tags** de output; parser em `packages/ai/src/llm/xml-parser.ts`
+- Context caching via `createLlmCache`/`callLlmWithCache` — requer mínimo ~32K tokens no Gemini
+- Todo `callLlm` deve logar tokens e persistir custo em `processing_jobs.cost_usd`
+
+### Motor de cruzamento semântico
+
+`packages/queue/src/processors/crossing.ts` — busca híbrida em dois níveis:
+1. **pgvector** (cosine, threshold 0.35) → top-30 candidatos semânticos
+2. **FTS** (`plainto_tsquery('portuguese', ...)`) → top-30 candidatos por keyword
+3. **RRF** (k=60) → mescla e re-ranqueia, envia top-18 ao LLM
+4. Match em dois níveis: `cats.descricao_tecnica` (nivel_match = `cat`) e `cat_itens.descricao` (nivel_match = `item`)
+5. Normalização de unidades antes de comparar quantitativos (tabela `UNIT_CONVERSIONS` no mesmo arquivo)
+
+---
+
+## Convenções de código
+
+- **TypeScript strict** — sem `any` explícito
+- **Drizzle ORM** para todas as queries; SQL raw apenas para operações pgvector e migrations
+- **Zod** para validação em todas as rotas e jobs
+- Nomenclatura: `camelCase` no código, `snake_case` no banco
+- Erro de API: `{ error: { code: string, message: string, details?: unknown } }`
+- Server Components por padrão no Next.js; Client Components apenas onde necessário
+- Busca de dados via Server Actions ou Route Handlers (não `useEffect`)
+- `ApiClient` em `apps/web/src/lib/api.ts` — instanciado via hook `useApiClient` com token Better Auth
+- Queries de busca semântica filtram por `embedding_model = CURRENT_EMBEDDING_MODEL` para evitar mistura de modelos
+
+---
+
+## Variáveis de ambiente
+
+```bash
 DATABASE_URL=postgresql://...
-# Redis
 REDIS_URL=redis://...
-# Storage
-S3_BUCKET=
-S3_REGION=
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-# Auth
-CLERK_SECRET_KEY=
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-# IA (Google)
-GEMINI_API_KEY=                       # LLM (gemini-3-flash-preview) + Embeddings (gemini-embedding-2-preview)
+S3_BUCKET=            S3_REGION=           AWS_ACCESS_KEY_ID=    AWS_SECRET_ACCESS_KEY=
+GEMINI_API_KEY=                          # LLM + Embeddings
 GOOGLE_DOCUMENT_AI_PROJECT_ID=
 GOOGLE_DOCUMENT_AI_PROCESSOR_ID=
 GOOGLE_APPLICATION_CREDENTIALS=
-# App
+BETTER_AUTH_SECRET=
+BETTER_AUTH_URL=https://licitacat.domain  # URL do Next.js (não da API)
+NEXT_PUBLIC_BETTER_AUTH_URL=https://...
+RESEND_API_KEY=                          # reset de senha
+RESEND_FROM_EMAIL=
 NEXT_PUBLIC_API_URL=http://localhost:3001
 API_PORT=3001
 ```
+
 ---
-## 8. Módulos do sistema e estado de desenvolvimento
+
+## Segurança de segredos
+
+> **Nunca** versionar chaves/segredos. Em produção, injetar via Docker secrets / variáveis externas (`docker-stack.yml` usa só `${VAR}`, carregadas de `/root/licitacat.secrets.env`). Em dev, usar `.env` (ignorado) e `secrets.env.example` como template.
+
+- **Não** colocar valores reais em `docker-stack.yml`, Dockerfiles (`ARG`/`ENV` default), seed, README ou qualquer arquivo versionado — apenas `${VAR}` ou placeholders.
+- Segredos ficam só em: `.env`, `*.secrets.env` (ambos no `.gitignore`) ou Docker secrets.
+- **Hook de pré-commit** em `.githooks/pre-commit` bloqueia segredos antes do commit. Ative uma vez por clone:
+  ```bash
+  git config core.hooksPath .githooks
+  ```
+  Usa `gitleaks` se instalado; caso contrário, aplica varredura por padrões (Google `AIza…`, GitHub `ghp_…`, AWS `AKIA…`, PEM keys, etc.).
+- Auditar todo o histórico: `gitleaks detect --source . --log-opts="--all"` (ou `git log --all -S '<valor>'`).
+- Se um segredo vazar: **primeiro revogar/rotacionar** a chave no provedor (purgar o histórico não desfaz a exposição), depois reescrever o histórico com `git filter-repo --replace-text` + `git push --force`.
+
+---
+
+## Status dos módulos
+
 | Módulo | Descrição | Status |
 |--------|-----------|--------|
 | M0 | Infraestrutura base (monorepo, DB, auth, multi-tenancy) | ✅ Concluído |
@@ -151,44 +273,18 @@ API_PORT=3001
 | M3 | Motor de cruzamento semântico | 🔄 Em andamento |
 | M4 | Dashboard + exportação de relatórios | ✅ Concluído |
 | M5 | Gestão de usuários, planos e auditoria | 🔲 Pendente |
-> **Atualize o status deste quadro a cada módulo concluído.**
-> Use: 🔲 Pendente | 🔄 Em andamento | ✅ Concluído
+
 ---
-## 9. Comandos úteis
-```bash
-# Instalar dependências
-pnpm install
-# Subir ambiente de desenvolvimento
-docker-compose up -d          # PostgreSQL + Redis + MinIO
-pnpm dev                      # Roda api + web em paralelo (Turborepo)
-# Banco de dados
-pnpm db:migrate               # Executa migrations pendentes
-pnpm db:studio                # Abre Drizzle Studio
-pnpm db:seed                  # Popula dados de teste
-# Aplicar migration SQL diretamente (produção usa psql, não Drizzle migrate)
-docker exec <postgres_container> psql -U licitacat -d licitacat < packages/db/migrations/XXXX_nome.sql
-# Re-embedding de todos os embeddings existentes (após trocar modelo)
-docker cp direct-reembed.mjs <worker_container>:/app/direct-reembed.mjs
-docker exec <worker_container> node /app/direct-reembed.mjs
-# Deploy em produção (Docker Swarm)
-docker build -f apps/api/Dockerfile -t licitacat-api:latest .
-docker service update --force licitacat_worker   # worker
-docker service update --force licitacat_api      # API (se necessário)
-# Testes
-pnpm test                     # Vitest (todos os packages)
-pnpm test:e2e                 # Playwright
-# Build
-pnpm build                    # Build de produção (todos os apps)
-```
----
-## 10. Decisões de arquitetura já tomadas — não reverter sem discussão
-1. **pgvector no PostgreSQL** para embeddings — não usar Pinecone/Weaviate no MVP (simplifica infraestrutura)
-2. **Drizzle ORM** — não Prisma (melhor suporte a pgvector e tipos customizados)
-3. **BullMQ** para fila — não SQS no MVP (evitar dependência de AWS para dev local)
-4. **Clerk** para auth — não NextAuth/Auth.js (suporte nativo a multi-tenancy via Organizations)
-5. **Google Gemini** para LLM e embeddings — modelo `gemini-3-flash-preview` (LLM) + `gemini-embedding-2-preview` (embeddings 768D, v1beta endpoint). Voyage AI foi descontinuado neste projeto.
-6. **Matching em dois níveis**: embeddings de `cats.descricao_tecnica` E de `cat_itens.descricao` — o cruzamento deve tentar ambos e registrar `nivel_match` em `crossing_item_cats`
-7. **Revisão humana obrigatória** para requisitos com `ai_confidence_score < 70` antes de liberar cruzamento
-8. **Motor de busca híbrido V2**: pgvector (semântico) + FTS PostgreSQL (`plainto_tsquery('portuguese', ...)`) mesclados via **Reciprocal Rank Fusion (RRF)** — não usar regex `~*` para keyword search
-9. **Tracking de modelo de embedding**: coluna `embedding_model text` em `cats`, `cat_itens`, `edital_requisitos`, `req_parcelas_relevancia` — queries de busca semântica filtram por `embedding_model = CURRENT_EMBEDDING_MODEL` para evitar mistura de modelos
-10. **Normalização de unidades** no motor de cruzamento: converter km→M, ha→M², ton→KG etc. antes de comparar quantitativos — tabela `UNIT_CONVERSIONS` em `packages/queue/src/processors/crossing.ts`
+
+## Decisões de arquitetura — não reverter sem discussão
+
+1. **pgvector no PostgreSQL** para embeddings (não Pinecone/Weaviate)
+2. **Drizzle ORM** (não Prisma — melhor suporte a pgvector e tipos customizados)
+3. **BullMQ** para fila (não SQS — sem dependência AWS em dev)
+4. **Better Auth** para auth (substituiu Clerk; sessões próprias no PostgreSQL)
+5. **Google Gemini** — `gemini-3-flash-preview` (LLM) + `gemini-embedding-2-preview` 768D endpoint `v1beta`
+6. **Matching em dois níveis**: `cats.descricao_tecnica` (cat) E `cat_itens.descricao` (item) — registrar `nivel_match` em `crossing_item_cats`
+7. **Revisão humana obrigatória** para `ai_confidence_score < 70` antes de liberar cruzamento
+8. **Busca híbrida V2**: pgvector + FTS mesclados via RRF (não regex `~*`)
+9. **Tracking de modelo**: coluna `embedding_model` em todas as tabelas com embedding — filtrar por `CURRENT_EMBEDDING_MODEL` nas queries
+10. **Normalização de unidades**: km→M, ha→M², ton→KG antes de comparar quantitativos

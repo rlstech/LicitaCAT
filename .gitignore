@@ -46,18 +46,5 @@ secrets.env
 *.secrets.env
 !secrets.env.example
 
-# Dependencies (AIOX)
-node_modules/
-
-# Build & Logs (AIOX)
-dist/
-build/
-logs/
-
-# IDE & OS (AIOX)
-.idea/
-
-# AIOX Local (AIOX)
-.aiox-core/local/
+# Local settings (contains secrets/allow rules)
 .claude/settings.local.json
-.aiox/install-log.txt
