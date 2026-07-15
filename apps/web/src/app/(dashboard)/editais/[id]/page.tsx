@@ -477,8 +477,14 @@ export default function EditalDetailPage() {
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: '{}',
       })
-      if (r.ok) setEdital((p) => p ? { ...p, status: 'extracting' } : p)
-    } catch { /* ignore */ } finally { setReprocessing(false) }
+      if (r.ok) {
+        setEdital((p) => p ? { ...p, status: 'extracting' } : p)
+      } else {
+        alert(r.status === 403
+          ? 'Você não tem permissão para reprocessar este edital.'
+          : `Falha ao reprocessar (HTTP ${r.status}).`)
+      }
+    } catch { alert('Erro de conexão ao reprocessar o edital.') } finally { setReprocessing(false) }
   }
 
   async function doDelete() {

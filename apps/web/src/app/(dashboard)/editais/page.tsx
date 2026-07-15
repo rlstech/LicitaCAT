@@ -68,6 +68,7 @@ export default function EditaisPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [reprocessingId, setReprocessingId] = useState<string | null>(null)
 
   const fetchEditais = useCallback(async () => {
     try {
@@ -109,6 +110,33 @@ export default function EditaisPage() {
     } catch { /* silent */ } finally {
       setDeletingId(null)
       setConfirmDeleteId(null)
+    }
+  }
+
+  async function reprocessEdital(editalId: string) {
+    setReprocessingId(editalId)
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API_URL}/api/editais/${editalId}/reprocess`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: '{}',
+      })
+      if (res.ok) {
+        setEditais((prev) => prev.map((e) => (e.id === editalId ? { ...e, status: 'uploaded' } : e)))
+      } else {
+        const msg = res.status === 403
+          ? 'Você não tem permissão para reprocessar este edital.'
+          : `Falha ao reprocessar (HTTP ${res.status}).`
+        alert(msg)
+      }
+    } catch {
+      alert('Erro de conexão ao reprocessar o edital.')
+    } finally {
+      setReprocessingId(null)
     }
   }
 
@@ -305,10 +333,12 @@ export default function EditaisPage() {
                           {edital.status === 'error' ? (
                             <>
                               <button
-                                className="rounded-md p-1 text-[#003746] transition-colors hover:bg-[#003746]/10"
+                                onClick={() => reprocessEdital(edital.id)}
+                                disabled={reprocessingId === edital.id}
+                                className="rounded-md p-1 text-[#003746] transition-colors hover:bg-[#003746]/10 disabled:opacity-50"
                                 title="Reprocessar"
                               >
-                                <span className="material-symbols-outlined text-lg">refresh</span>
+                                <span className={`material-symbols-outlined text-lg ${reprocessingId === edital.id ? 'animate-spin' : ''}`}>refresh</span>
                               </button>
                               {renderDeleteButton(edital.id)}
                             </>

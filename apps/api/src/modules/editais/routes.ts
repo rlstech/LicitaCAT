@@ -270,7 +270,7 @@ export async function editaisRoutes(app: FastifyInstance) {
   // POST /api/editais/:editalId/reprocess — re-enqueue edital extraction
   app.post(
     '/:editalId/reprocess',
-    { preHandler: requireRole('admin') },
+    { preHandler: requireRole('admin', 'analyst') },
     async (request) => {
       const { editalId } = EditalParamsSchema.parse(request.params)
       const edital = await findEditalById(request.tenantId, editalId)
