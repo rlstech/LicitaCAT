@@ -1,12 +1,23 @@
-const apiKey = process.env['GEMINI_API_KEY']
-if (!apiKey) {
-  throw new Error('GEMINI_API_KEY environment variable is required')
-}
+import { getAiProvider, getGenAI } from '../provider.js'
 
-export const CURRENT_EMBEDDING_MODEL = 'gemini-embedding-2-preview'
+/**
+ * Embedding model id.
+ *
+ * The model name differs between backends: AI Studio exposes
+ * `gemini-embedding-2-preview`; Vertex AI exposes `gemini-embedding-001`
+ * (both support 768 dims via outputDimensionality). Configurable via env.
+ *
+ * NOTE: changing this value marks previously-stored embeddings as belonging to
+ * a different model — search queries filter by `embedding_model =
+ * CURRENT_EMBEDDING_MODEL`, so a re-embedding pass (reembed_batch) is required
+ * after switching backends.
+ */
+export const CURRENT_EMBEDDING_MODEL =
+  process.env['EMBEDDING_MODEL'] ||
+  (getAiProvider() === 'vertex' ? 'gemini-embedding-001' : 'gemini-embedding-2-preview')
+
 const EMBEDDING_MODEL = CURRENT_EMBEDDING_MODEL
 const EMBEDDING_DIMENSIONS = 768
-const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`
 
 export interface EmbeddingResult {
   embedding: number[]
@@ -26,27 +37,22 @@ export async function generateEmbedding(
 ): Promise<EmbeddingResult> {
   const taskType = inputType === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT'
 
-  const response = await fetch(EMBED_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: `models/${EMBEDDING_MODEL}`,
-      content: { parts: [{ text }] },
+  const ai = getGenAI()
+  const response = await ai.models.embedContent({
+    model: EMBEDDING_MODEL,
+    contents: text,
+    config: {
       taskType,
       outputDimensionality: EMBEDDING_DIMENSIONS,
-    }),
+    },
   })
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Gemini embedding API error ${response.status}: ${errorText}`)
-  }
-
-  const data = await response.json() as { embedding: { values: number[] } }
-  const embedding = data.embedding.values
+  const embedding = response.embeddings?.[0]?.values
 
   if (!embedding || embedding.length !== EMBEDDING_DIMENSIONS) {
-    throw new Error(`Invalid embedding dimensions: expected ${EMBEDDING_DIMENSIONS}, got ${embedding?.length}`)
+    throw new Error(
+      `Invalid embedding dimensions: expected ${EMBEDDING_DIMENSIONS}, got ${embedding?.length}`,
+    )
   }
 
   return { embedding, tokensUsed: 0, costUsd: 0 }

@@ -1,28 +1,28 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
-import { GoogleAICacheManager } from '@google/generative-ai/server'
+import type { Content, GenerateContentResponse } from '@google/genai'
+import { getAiProvider, getGenAI } from '../provider.js'
 
-const apiKey = process.env['GEMINI_API_KEY']
+/**
+ * LLM model id. Configurable via env so the Vertex model name (which may differ
+ * from the AI Studio name) can be set without a code change.
+ * Falls back to the AI Studio name for the `studio` provider.
+ */
+export const DEFAULT_MODEL = process.env['LLM_MODEL'] || 'gemini-2.5-flash'
 
-if (!apiKey) {
-  throw new Error('GEMINI_API_KEY environment variable is required')
+// Pricing per million tokens (USD). Unknown models fall back to DEFAULT_PRICING.
+const DEFAULT_PRICING = { input: 0.5, output: 3.0 }
+const PRICING: Record<string, { input: number; output: number }> = {
+  'gemini-2.5-flash': { input: 0.3, output: 2.5 },
+  'gemini-2.5-flash-lite': { input: 0.1, output: 0.4 },
+  'gemini-2.5-pro': { input: 1.25, output: 10.0 },
+  'gemini-3-flash-preview': { input: 0.5, output: 3.0 },
 }
 
-const genAI = new GoogleGenerativeAI(apiKey)
-const cacheManager = new GoogleAICacheManager(apiKey)
-
-export const DEFAULT_MODEL = 'gemini-3-flash-preview' as const
-
-// Pricing per million tokens (USD)
-const PRICING = {
-  'gemini-3-flash-preview': { input: 0.50, output: 3.00 },
-} as const
-
 export function calculateCostUsd(
-  model: keyof typeof PRICING,
+  model: string,
   inputTokens: number,
   outputTokens: number,
 ): number {
-  const pricing = PRICING[model]
+  const pricing = PRICING[model] ?? DEFAULT_PRICING
   const inputCost = (inputTokens / 1_000_000) * pricing.input
   const outputCost = (outputTokens / 1_000_000) * pricing.output
   return inputCost + outputCost
@@ -49,13 +49,40 @@ export interface LlmInlineFile {
   mimeType: string
 }
 
+function toContents(
+  messages: Array<{ role: 'user' | 'assistant'; content: string; inlineFiles?: LlmInlineFile[] }>,
+): Content[] {
+  return messages.map((m) => ({
+    role: m.role === 'user' ? 'user' : 'model',
+    parts: [
+      ...(m.inlineFiles ?? []).map((f) => ({
+        inlineData: { data: f.data.toString('base64'), mimeType: f.mimeType },
+      })),
+      { text: m.content },
+    ],
+  }))
+}
+
+function toLlmResponse(response: GenerateContentResponse): LlmResponse {
+  const candidate = response.candidates?.[0]
+  const finishReason = candidate?.finishReason ?? 'STOP'
+  return {
+    text: response.text ?? '',
+    finishReason: String(finishReason),
+    usage: {
+      input_tokens: response.usageMetadata?.promptTokenCount ?? 0,
+      output_tokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+    },
+  }
+}
+
 /**
  * Create a Gemini context cache with the given system instruction.
  * Returns the cache name (used to retrieve it later).
  *
- * NOTE: Gemini requires a minimum of ~32,768 tokens in cached content.
- * For small system prompts, the cache creation may fail or be ignored.
- * Always use try/catch and fall back to normal callLlm on failure.
+ * NOTE: Gemini/Vertex require a minimum number of tokens in cached content.
+ * For small system prompts, cache creation may fail. Always use try/catch and
+ * fall back to normal callLlm on failure.
  *
  * @param systemInstruction - The system prompt to cache
  * @param ttlSeconds - Cache lifetime in seconds (default: 600 = 10 minutes)
@@ -64,11 +91,13 @@ export async function createLlmCache(options: {
   systemInstruction: string
   ttlSeconds?: number
 }): Promise<string> {
-  const cached = await cacheManager.create({
+  const ai = getGenAI()
+  const cached = await ai.caches.create({
     model: DEFAULT_MODEL,
-    systemInstruction: options.systemInstruction,
-    contents: [],
-    ttlSeconds: options.ttlSeconds ?? 600,
+    config: {
+      systemInstruction: options.systemInstruction,
+      ttl: `${options.ttlSeconds ?? 600}s`,
+    },
   })
   if (!cached.name) throw new Error('Gemini cache created without a name')
   return cached.name
@@ -76,37 +105,22 @@ export async function createLlmCache(options: {
 
 /**
  * Call Gemini using a previously created context cache.
- * Falls back to normal generation if the cache is unavailable.
  */
 export async function callLlmWithCache(options: {
   cacheName: string
   max_tokens?: number
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
 }): Promise<LlmResponse> {
-  const cachedContent = await cacheManager.get(options.cacheName)
-  const model = genAI.getGenerativeModelFromCachedContent(cachedContent)
-
-  const result = await model.generateContent({
-    contents: options.messages.map((m) => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.content }],
-    })),
-    generationConfig: {
+  const ai = getGenAI()
+  const response = await ai.models.generateContent({
+    model: DEFAULT_MODEL,
+    contents: toContents(options.messages),
+    config: {
+      cachedContent: options.cacheName,
       maxOutputTokens: options.max_tokens ?? 4096,
     },
   })
-
-  const candidate = result.response.candidates?.[0]
-  const finishReason = candidate?.finishReason ?? 'STOP'
-
-  return {
-    text: result.response.text(),
-    finishReason: String(finishReason),
-    usage: {
-      input_tokens: result.response.usageMetadata?.promptTokenCount ?? 0,
-      output_tokens: result.response.usageMetadata?.candidatesTokenCount ?? 0,
-    },
-  }
+  return toLlmResponse(response)
 }
 
 export async function* streamLlm(options: {
@@ -115,22 +129,18 @@ export async function* streamLlm(options: {
   system?: string
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
 }): AsyncGenerator<string> {
-  const modelName = options.model ?? DEFAULT_MODEL
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    ...(options.system ? { systemInstruction: options.system } : {}),
+  const ai = getGenAI()
+  const stream = await ai.models.generateContentStream({
+    model: options.model ?? DEFAULT_MODEL,
+    contents: toContents(options.messages),
+    config: {
+      maxOutputTokens: options.max_tokens ?? 2048,
+      ...(options.system ? { systemInstruction: options.system } : {}),
+    },
   })
 
-  const result = await model.generateContentStream({
-    contents: options.messages.map((m) => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.content }],
-    })),
-    generationConfig: { maxOutputTokens: options.max_tokens ?? 2048 },
-  })
-
-  for await (const chunk of result.stream) {
-    const text = chunk.text()
+  for await (const chunk of stream) {
+    const text = chunk.text
     if (text) yield text
   }
 }
@@ -141,37 +151,17 @@ export async function callLlm(options: {
   system?: string
   messages: Array<{ role: 'user' | 'assistant'; content: string; inlineFiles?: LlmInlineFile[] }>
 }): Promise<LlmResponse> {
-  const modelName = options.model ?? DEFAULT_MODEL
-
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    ...(options.system ? { systemInstruction: options.system } : {}),
-  })
-
-  const result = await model.generateContent({
-    contents: options.messages.map((m) => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [
-        ...(m.inlineFiles ?? []).map((f) => ({
-          inlineData: { data: f.data.toString('base64'), mimeType: f.mimeType },
-        })),
-        { text: m.content },
-      ],
-    })),
-    generationConfig: {
+  const ai = getGenAI()
+  const response = await ai.models.generateContent({
+    model: options.model ?? DEFAULT_MODEL,
+    contents: toContents(options.messages),
+    config: {
       maxOutputTokens: options.max_tokens ?? 4096,
+      ...(options.system ? { systemInstruction: options.system } : {}),
     },
   })
-
-  const candidate = result.response.candidates?.[0]
-  const finishReason = candidate?.finishReason ?? 'STOP'
-
-  return {
-    text: result.response.text(),
-    finishReason: String(finishReason),
-    usage: {
-      input_tokens: result.response.usageMetadata?.promptTokenCount ?? 0,
-      output_tokens: result.response.usageMetadata?.candidatesTokenCount ?? 0,
-    },
-  }
+  return toLlmResponse(response)
 }
+
+// Re-exported so callers can log which backend is active.
+export { getAiProvider } from '../provider.js'

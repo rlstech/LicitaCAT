@@ -38,7 +38,7 @@ services:
       - network_public
       - licitacat_network
     secrets:
-      - gcp_credentials
+      - gcp_credentials_v2
     environment:
       NODE_ENV: production
       API_PORT: "3001"
@@ -56,9 +56,16 @@ services:
       AWS_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD}"
       GEMINI_API_KEY: "${GEMINI_API_KEY}"
       VOYAGE_API_KEY: ""
-      GOOGLE_DOCUMENT_AI_PROJECT_ID: "engcheck"
-      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: "6547814ce6130bd6"
-      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/gcp_credentials"
+      # AI backend: vertex (usa crédito Google Cloud via ADC) | studio (usa GEMINI_API_KEY)
+      AI_PROVIDER: "${AI_PROVIDER:-vertex}"
+      GOOGLE_VERTEX_PROJECT: "${GOOGLE_VERTEX_PROJECT}"
+      GOOGLE_VERTEX_LOCATION: "${GOOGLE_VERTEX_LOCATION:-us-central1}"
+      # Nomes de modelo podem diferir no Vertex; sobrescreva se necessário
+      LLM_MODEL: "${LLM_MODEL:-}"
+      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-}"
+      GOOGLE_DOCUMENT_AI_PROJECT_ID: "${GOOGLE_DOCUMENT_AI_PROJECT_ID:-licitacat}"
+      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: "${GOOGLE_DOCUMENT_AI_PROCESSOR_ID:-ad338df228e98b5f}"
+      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/gcp_credentials_v2"
     deploy:
       replicas: 1
       restart_policy:
@@ -91,7 +98,7 @@ services:
     networks:
       - licitacat_network
     secrets:
-      - gcp_credentials
+      - gcp_credentials_v2
     environment:
       NODE_ENV: production
       DATABASE_URL: "${DATABASE_URL}"
@@ -105,9 +112,16 @@ services:
       BETTER_AUTH_URL: "https://licitacat.railton.eu.org"
       GEMINI_API_KEY: "${GEMINI_API_KEY}"
       VOYAGE_API_KEY: ""
-      GOOGLE_DOCUMENT_AI_PROJECT_ID: "engcheck"
-      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: "6547814ce6130bd6"
-      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/gcp_credentials"
+      # AI backend: vertex (usa crédito Google Cloud via ADC) | studio (usa GEMINI_API_KEY)
+      AI_PROVIDER: "${AI_PROVIDER:-vertex}"
+      GOOGLE_VERTEX_PROJECT: "${GOOGLE_VERTEX_PROJECT}"
+      GOOGLE_VERTEX_LOCATION: "${GOOGLE_VERTEX_LOCATION:-us-central1}"
+      # Nomes de modelo podem diferir no Vertex; sobrescreva se necessário
+      LLM_MODEL: "${LLM_MODEL:-}"
+      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-}"
+      GOOGLE_DOCUMENT_AI_PROJECT_ID: "${GOOGLE_DOCUMENT_AI_PROJECT_ID:-licitacat}"
+      GOOGLE_DOCUMENT_AI_PROCESSOR_ID: "${GOOGLE_DOCUMENT_AI_PROCESSOR_ID:-ad338df228e98b5f}"
+      GOOGLE_APPLICATION_CREDENTIALS: "/run/secrets/gcp_credentials_v2"
     deploy:
       replicas: 1
       restart_policy:
@@ -190,5 +204,5 @@ volumes:
   licitacat_minio_data:
 
 secrets:
-  gcp_credentials:
+  gcp_credentials_v2:
     external: true
