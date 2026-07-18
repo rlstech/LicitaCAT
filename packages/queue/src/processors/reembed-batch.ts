@@ -22,51 +22,38 @@ interface PendingRow {
   text: string
 }
 
-async function fetchPendingRows(entityType: EntityType, batchSize: number): Promise<PendingRow[]> {
-  const condition = sql`embedding_model IS NULL OR embedding_model != ${CURRENT_EMBEDDING_MODEL}`
+// Table + text column for each entity type.
+const SOURCE: Record<EntityType, { table: string; textCol: string }> = {
+  cat: { table: 'cats', textCol: 'descricao_tecnica' },
+  cat_item: { table: 'cat_itens', textCol: 'descricao' },
+  edital_requisito: { table: 'edital_requisitos', textCol: 'descricao' },
+  parcela_relevancia: { table: 'req_parcelas_relevancia', textCol: 'servico' },
+}
 
-  if (entityType === 'cat') {
-    const rows = await db.execute(sql`
-      SELECT id, coalesce(descricao_tecnica, '') as text
-      FROM cats
-      WHERE ${condition}
-        AND embedding IS NOT NULL
-      LIMIT ${batchSize}
-    `)
-    return Array.from(rows as unknown as Iterable<Record<string, unknown>>)
-      .map(r => ({ id: String(r['id']), text: String(r['text'] ?? '') }))
-  }
-
-  if (entityType === 'cat_item') {
-    const rows = await db.execute(sql`
-      SELECT id, coalesce(descricao, '') as text
-      FROM cat_itens
-      WHERE ${condition}
-        AND embedding IS NOT NULL
-      LIMIT ${batchSize}
-    `)
-    return Array.from(rows as unknown as Iterable<Record<string, unknown>>)
-      .map(r => ({ id: String(r['id']), text: String(r['text'] ?? '') }))
-  }
-
-  if (entityType === 'edital_requisito') {
-    const rows = await db.execute(sql`
-      SELECT id, coalesce(descricao, '') as text
-      FROM edital_requisitos
-      WHERE ${condition}
-        AND embedding IS NOT NULL
-      LIMIT ${batchSize}
-    `)
-    return Array.from(rows as unknown as Iterable<Record<string, unknown>>)
-      .map(r => ({ id: String(r['id']), text: String(r['text'] ?? '') }))
-  }
-
-  // parcela_relevancia
+/**
+ * Fetch a page of rows still on an outdated embedding model, using KEYSET
+ * pagination by `id` (cursor = `afterId`).
+ *
+ * Why keyset and not plain LIMIT: `embedding_gen` re-embeds rows asynchronously,
+ * so rows leave the "pending" set (embedding_model flips) while we iterate. A
+ * bare `LIMIT batchSize` re-reads the same still-pending rows every iteration
+ * and re-enqueues them in a runaway loop (once enqueued tens of thousands of
+ * duplicate jobs). Walking forward by `id > afterId ORDER BY id` visits each
+ * pending row at most once and never revisits rows we've already passed.
+ */
+async function fetchPendingRows(
+  entityType: EntityType,
+  batchSize: number,
+  afterId: string,
+): Promise<PendingRow[]> {
+  const { table, textCol } = SOURCE[entityType]
   const rows = await db.execute(sql`
-    SELECT id, coalesce(servico, '') as text
-    FROM req_parcelas_relevancia
-    WHERE ${condition}
+    SELECT id, coalesce(${sql.raw(textCol)}, '') as text
+    FROM ${sql.raw(table)}
+    WHERE (embedding_model IS NULL OR embedding_model != ${CURRENT_EMBEDDING_MODEL})
       AND embedding IS NOT NULL
+      AND id > ${afterId}
+    ORDER BY id
     LIMIT ${batchSize}
   `)
   return Array.from(rows as unknown as Iterable<Record<string, unknown>>)
@@ -80,23 +67,31 @@ async function processReembedBatch(job: Job<ReembedBatchJobData>): Promise<void>
   let totalEnqueued = 0
 
   for (const entityType of entityTypes) {
-    let offset = 0
+    let enqueuedForType = 0
+    // Empty string sorts before every uuid, so the first page starts at the beginning.
+    let afterId = ''
     let hasMore = true
 
     while (hasMore) {
-      const rows = await fetchPendingRows(entityType, batchSize)
+      const rows = await fetchPendingRows(entityType, batchSize, afterId)
 
       if (rows.length === 0) {
         hasMore = false
         break
       }
 
-      // Enqueue embedding_gen jobs for this batch
+      // Enqueue one embedding_gen job per row. We deliberately do NOT set a
+      // BullMQ opts.jobId here: a deterministic jobId dedups against *completed*
+      // jobs still retained in Redis from a previous run, silently skipping rows
+      // that legitimately need re-embedding again (e.g. a later model switch).
+      // Keyset pagination already guarantees one enqueue per row per run, and the
+      // reembed_batch worker runs with concurrency 1 (no overlapping runs), so no
+      // dedup is needed.
       const jobs = rows.map(row => ({
         name: `reembed-${entityType}-${row.id}`,
         data: {
-          tenantId: 'reembed', // embedding-gen uses raw SQL with entityId only, tenantId not used in query
-          entityType: entityType as 'edital_requisito' | 'cat' | 'cat_item' | 'parcela_relevancia',
+          tenantId: 'reembed', // embedding-gen queries by entityId only; tenantId unused
+          entityType,
           entityId: row.id,
           text: row.text,
           jobId: `reembed-${entityType}-${row.id}`,
@@ -105,7 +100,9 @@ async function processReembedBatch(job: Job<ReembedBatchJobData>): Promise<void>
 
       await embeddingGenQueue.addBulk(jobs)
       totalEnqueued += rows.length
-      offset += rows.length
+      enqueuedForType += rows.length
+      // Advance the cursor past the last row of this page.
+      afterId = rows[rows.length - 1]!.id
 
       console.log(`[reembed-batch] Enqueued ${rows.length} ${entityType} jobs (total so far: ${totalEnqueued})`)
 
@@ -117,7 +114,7 @@ async function processReembedBatch(job: Job<ReembedBatchJobData>): Promise<void>
       }
     }
 
-    console.log(`[reembed-batch] ${entityType}: done. Total enqueued for this type: ${offset}`)
+    console.log(`[reembed-batch] ${entityType}: done. Total enqueued for this type: ${enqueuedForType}`)
   }
 
   console.log(`[reembed-batch] Batch complete. Total jobs enqueued: ${totalEnqueued}`)
