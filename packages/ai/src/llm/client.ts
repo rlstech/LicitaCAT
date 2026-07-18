@@ -28,6 +28,18 @@ export function calculateCostUsd(
   return inputCost + outputCost
 }
 
+/**
+ * Gemini 2.5 flash models are "thinking" models: reasoning tokens are billed
+ * against `maxOutputTokens`, so a large structured response (e.g. edital JSON)
+ * can be truncated mid-string before the real output completes. For structured
+ * extraction we disable thinking (`thinkingBudget: 0`) so the whole budget is
+ * available for the answer. Only flash/flash-lite support a zero budget — pro
+ * models enforce a minimum, so we skip them and leave thinking on by default.
+ */
+function thinkingConfigFor(model: string): { thinkingConfig?: { thinkingBudget: number } } {
+  return /2\.5-flash/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}
+}
+
 export interface LlmUsage {
   inputTokens: number
   outputTokens: number
@@ -118,6 +130,7 @@ export async function callLlmWithCache(options: {
     config: {
       cachedContent: options.cacheName,
       maxOutputTokens: options.max_tokens ?? 4096,
+      ...thinkingConfigFor(DEFAULT_MODEL),
     },
   })
   return toLlmResponse(response)
@@ -136,6 +149,7 @@ export async function* streamLlm(options: {
     config: {
       maxOutputTokens: options.max_tokens ?? 2048,
       ...(options.system ? { systemInstruction: options.system } : {}),
+      ...thinkingConfigFor(options.model ?? DEFAULT_MODEL),
     },
   })
 
@@ -158,6 +172,7 @@ export async function callLlm(options: {
     config: {
       maxOutputTokens: options.max_tokens ?? 4096,
       ...(options.system ? { systemInstruction: options.system } : {}),
+      ...thinkingConfigFor(options.model ?? DEFAULT_MODEL),
     },
   })
   return toLlmResponse(response)
