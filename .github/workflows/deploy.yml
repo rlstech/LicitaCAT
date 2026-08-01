@@ -165,6 +165,7 @@ jobs:
             fi
 
             state=$(jq -c --arg id "$service_id" '[.[] | select(.ServiceID == $id) | {desired: .DesiredState, current: .Status.State, error: (.Status.Err // "")} ]' <<< "$tasks")
+            echo "$service_name task state: $state"
             echo "### $service_name" >> "$GITHUB_STEP_SUMMARY"
             echo "\`\`\`json" >> "$GITHUB_STEP_SUMMARY"
             echo "$state" >> "$GITHUB_STEP_SUMMARY"
