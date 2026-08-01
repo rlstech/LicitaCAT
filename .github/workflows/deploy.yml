@@ -119,16 +119,53 @@ jobs:
           fi
 
           # Preserve the existing stack variables (which hold production
-          # credentials) and replace only the immutable image tags.
+          # credentials) and replace only the immutable image tags. Some
+          # older Portainer stacks were first created outside Portainer and do
+          # not retain their Env array; recover those values from their last
+          # Swarm task without writing them to logs.
           stack=$(request GET "$PORTAINER_URL/api/stacks/$stack_id")
-          env_json=$(jq --arg api_tag "$IMAGE_TAG" --arg web_tag "$IMAGE_TAG" '
-            (.Env // [])
-            | map(select(.name != "API_IMAGE_TAG" and .name != "WEB_IMAGE_TAG"))
-            + [
-                {name: "API_IMAGE_TAG", value: $api_tag},
-                {name: "WEB_IMAGE_TAG", value: $web_tag}
-              ]
-          ' <<< "$stack")
+          stack_env=$(jq -c '.Env // []' <<< "$stack")
+          services=$(request GET "$PORTAINER_URL/api/endpoints/$PORTAINER_ENDPOINT_ID/docker/services")
+          tasks=$(request GET "$PORTAINER_URL/api/endpoints/$PORTAINER_ENDPOINT_ID/docker/tasks")
+
+          recover_environment() {
+            local service_name=$1 service_id container config env
+            service_id=$(jq -r --arg name "$service_name" '.[] | select(.Spec.Name == $name) | .ID // empty' <<< "$services")
+            [ -n "$service_id" ] || { printf '[]'; return; }
+
+            while IFS= read -r container; do
+              [ -n "$container" ] || continue
+              config=$(request GET "$PORTAINER_URL/api/endpoints/$PORTAINER_ENDPOINT_ID/docker/containers/$container/json" || true)
+              env=$(jq -c '[.Config.Env[]? | capture("^(?<name>[^=]+)=(?<value>.*)$")]' <<< "$config" 2>/dev/null || printf '[]')
+              if jq -e 'any(.[]; .name == "DATABASE_URL" and .value != "")' <<< "$env" >/dev/null; then
+                printf '%s' "$env"
+                return
+              fi
+            done < <(jq -r --arg id "$service_id" '.[] | select(.ServiceID == $id) | .Status.ContainerStatus.ContainerID // empty' <<< "$tasks")
+            printf '[]'
+          }
+
+          api_env=$(recover_environment licitacat_api)
+          web_env=$(recover_environment licitacat_web)
+          if ! jq -e 'any(.[]; .name == "DATABASE_URL" and .value != "")' <<< "$stack_env" >/dev/null \
+            && ! jq -e 'any(.[]; .name == "DATABASE_URL" and .value != "")' <<< "$api_env" >/dev/null; then
+            echo "No preserved production environment was found for the API stack." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          env_json=$(jq -n \
+            --arg api_tag "$IMAGE_TAG" \
+            --arg web_tag "$IMAGE_TAG" \
+            --argjson stack "$stack_env" \
+            --argjson api "$api_env" \
+            --argjson web "$web_env" '
+              [$api[], $web[], $stack[]]
+              | map(select(.name != "API_IMAGE_TAG" and .name != "WEB_IMAGE_TAG"))
+              | reduce .[] as $item ({}; .[$item.name] = $item.value)
+              | .API_IMAGE_TAG = $api_tag
+              | .WEB_IMAGE_TAG = $web_tag
+              | to_entries | map({name: .key, value: .value})
+            ')
 
           payload=$(jq -n \
             --arg content "$COMPOSE_CONTENT" \
