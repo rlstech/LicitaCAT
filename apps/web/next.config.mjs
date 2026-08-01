@@ -7,6 +7,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const nextConfig = {
   output: 'standalone',
   transpilePackages: ['@licitacat/shared', '@licitacat/auth', '@licitacat/db'],
+  async rewrites() {
+    // In local development, proxy Better Auth through the local Next server.
+    // This keeps its session cookie on localhost and avoids browser CORS
+    // restrictions while the production database remains on the VPS.
+    if (process.env.LOCAL_DEV_USE_REMOTE_AUTH === 'true' && process.env.REMOTE_AUTH_URL) {
+      return {
+        beforeFiles: [
+          {
+            source: '/api/auth/:path*',
+            destination: `${process.env.REMOTE_AUTH_URL}/api/auth/:path*`,
+          },
+        ],
+      }
+    }
+
+    return []
+  },
   experimental: {
     outputFileTracingRoot: path.join(__dirname, '../../'),
   },
