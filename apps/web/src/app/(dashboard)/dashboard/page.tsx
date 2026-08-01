@@ -1,6 +1,8 @@
-import { auth } from '@licitacat/auth'
-import { headers } from 'next/headers'
+'use client'
+
+import { useToken } from '@/hooks/use-token'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
@@ -136,10 +138,22 @@ async function fetchStats(token: string | null): Promise<DashboardStats | null> 
   }
 }
 
-export default async function DashboardPage() {
-  const session = await auth.api.getSession({ headers: headers() as unknown as Headers })
-  const token = session?.session.token ?? null
-  const stats = await fetchStats(token)
+export default function DashboardPage() {
+  const getToken = useToken()
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    async function loadStats() {
+      const token = await getToken()
+      const nextStats = await fetchStats(token)
+      if (active) setStats(nextStats)
+    }
+
+    void loadStats()
+    return () => { active = false }
+  }, [getToken])
 
   const avgScore = stats?.crossings.avgScore ?? 0
 

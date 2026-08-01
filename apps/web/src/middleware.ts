@@ -11,9 +11,18 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Local development can use the production Better Auth endpoint. Its
+  // cross-domain cookie is unavailable to this local server, so this explicit
+  // opt-in bypasses only the local middleware check.
+  if (process.env['LOCAL_DEV_USE_REMOTE_AUTH'] === 'true') {
+    return NextResponse.next()
+  }
+
   // Usar URL interna (localhost) para evitar conexão SSL dentro do container
   // O Traefik termina o TLS externamente — internamente é sempre HTTP
-  const internalBase = 'http://localhost:3000'
+  const internalBase = process.env['NODE_ENV'] === 'production'
+    ? 'http://localhost:3000'
+    : request.nextUrl.origin
   const { data: session } = await betterFetch<Session>(
     '/api/auth/get-session',
     {

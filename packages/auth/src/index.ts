@@ -4,6 +4,11 @@ import { Resend } from 'resend'
 import { db } from '@licitacat/db'
 import * as schema from '@licitacat/db/schema'
 
+const additionalTrustedOrigins = (process.env['BETTER_AUTH_TRUSTED_ORIGINS'] ?? '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean)
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: 'pg',
@@ -34,6 +39,7 @@ export const auth = betterAuth({
     'https://api.licitacat.railton.eu.org',
     'http://localhost:3000',
     'http://localhost:3001',
+    ...additionalTrustedOrigins,
   ],
 })
 

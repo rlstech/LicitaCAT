@@ -22,13 +22,23 @@ async function buildServer() {
   })
 
   // Plugins
-  const allowedOrigins = [
-    process.env['WEB_URL'] ?? 'http://localhost:3000',
-    'https://licitacat.railton.eu.org',
-  ]
+  const configuredOrigins = (process.env['CORS_ALLOWED_ORIGINS'] ?? '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean)
+
+  // Keep local development usable even when this API runs in production.
+  // Additional origins are configured through CORS_ALLOWED_ORIGINS as a
+  // comma-separated list, avoiding source-code changes for new environments.
+  const allowedOrigins = new Set([
+    'http://localhost:3000',
+    'http://localhost:3100',
+    process.env['WEB_URL'] ?? 'https://licitacat.railton.eu.org',
+    ...configuredOrigins,
+  ])
   await app.register(cors, {
     origin: (origin, cb) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.has(origin)) {
         cb(null, true)
       } else {
         cb(new Error('Not allowed by CORS'), false)

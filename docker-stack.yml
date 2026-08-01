@@ -4,7 +4,10 @@ services:
 
   # ── Next.js Frontend ────────────────────────────��─────────────
   web:
-    image: licitacat-web:latest
+    # In Portainer, set LICITACAT_WEB_IMAGE to the GHCR image documented in
+    # docs/deploy-github-actions-portainer.md. The default preserves manual
+    # deployments that use a locally built image.
+    image: "${LICITACAT_WEB_IMAGE:-licitacat-web:latest}"
     networks:
       - network_public
       - licitacat_network
@@ -33,7 +36,10 @@ services:
 
   # ── Fastify API ────────────────────────────────────────────────
   api:
-    image: licitacat-api:latest
+    # In Portainer, set LICITACAT_API_IMAGE to the GHCR image documented in
+    # docs/deploy-github-actions-portainer.md. The default preserves manual
+    # deployments that use a locally built image.
+    image: "${LICITACAT_API_IMAGE:-licitacat-api:latest}"
     networks:
       - network_public
       - licitacat_network
@@ -44,8 +50,10 @@ services:
       API_PORT: "3001"
       NEXT_PUBLIC_API_URL: "https://api.licitacat.railton.eu.org"
       WEB_URL: "https://licitacat.railton.eu.org"
+      CORS_ALLOWED_ORIGINS: "https://licitacat.railton.eu.org,http://localhost:3000,http://localhost:3100"
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET}"
       BETTER_AUTH_URL: "https://licitacat.railton.eu.org"
+      BETTER_AUTH_TRUSTED_ORIGINS: "http://localhost:3000,http://localhost:3100"
       DATABASE_URL: "${DATABASE_URL}"
       REDIS_URL: "redis://redis:6379"
       S3_BUCKET: "licitacat"
@@ -93,7 +101,7 @@ services:
 
   # ── BullMQ Worker ──────────────────────────────────────────────
   worker:
-    image: licitacat-api:latest
+    image: "${LICITACAT_API_IMAGE:-licitacat-api:latest}"
     command: ["./node_modules/.bin/tsx", "packages/queue/src/worker.ts"]
     networks:
       - licitacat_network
@@ -110,6 +118,7 @@ services:
       AWS_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD}"
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET}"
       BETTER_AUTH_URL: "https://licitacat.railton.eu.org"
+      BETTER_AUTH_TRUSTED_ORIGINS: "http://localhost:3000,http://localhost:3100"
       GEMINI_API_KEY: "${GEMINI_API_KEY}"
       VOYAGE_API_KEY: ""
       # AI backend: vertex (usa crédito Google Cloud via ADC) | studio (usa GEMINI_API_KEY)
