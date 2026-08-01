@@ -4,7 +4,7 @@ O workflow `.github/workflows/deploy.yml` executa a cada `push` para `main`:
 
 1. cria as imagens da API e do frontend;
 2. publica-as no GitHub Container Registry (GHCR);
-3. chama o webhook do stack no Portainer, que atualiza os serviços no Docker Swarm.
+3. atualiza o stack pela API do Portainer, que atualiza os serviços no Docker Swarm.
 
 ## Configuração única no GitHub
 
@@ -12,7 +12,9 @@ No repositório, abra **Settings > Secrets and variables > Actions** e crie o se
 
 | Secret | Valor |
 | --- | --- |
-| `PORTAINER_WEBHOOK_URL` | URL completa do webhook de atualização do stack, copiada do Portainer |
+| `PORTAINER_URL` | URL base do Portainer, por exemplo `https://portainer.exemplo.com` |
+| `PORTAINER_API_KEY` | API key do Portainer com permissão para atualizar o stack |
+| `PORTAINER_ENDPOINT_ID` | ID numérico do ambiente Docker Swarm no Portainer |
 
 O `GITHUB_TOKEN` usado para publicar no GHCR é fornecido automaticamente pelo GitHub Actions. O workflow publica as imagens:
 
@@ -26,19 +28,19 @@ Ele também publica uma tag imutável com o SHA do commit, útil para auditoria 
 ## Configuração única no Portainer
 
 1. Abra o stack `licitacat` no ambiente Docker Swarm.
-2. Configure-o como um stack proveniente deste repositório Git, branch `main`, arquivo `docker-stack.yml`. Assim, o webhook baixa a revisão recém-enviada antes do redeploy.
-3. Em **Environment variables**, defina:
+2. Em **Environment variables**, mantenha as variáveis de produção já existentes. O workflow as preserva e adiciona/atualiza somente as tags de imagem.
+3. Garanta que o Portainer tenha acesso ao GHCR. Se os pacotes forem privados, crie/configure uma credencial de registry para `ghcr.io` com um GitHub Personal Access Token de escopo `read:packages`.
+4. Crie uma API key do Portainer com permissão de atualização para esse ambiente e use-a no secret `PORTAINER_API_KEY` do GitHub.
+5. Copie o ID do ambiente Docker Swarm para `PORTAINER_ENDPOINT_ID` e a URL do Portainer para `PORTAINER_URL`.
 
-   ```text
-   LICITACAT_API_IMAGE=ghcr.io/rlstech/licitacat-api:latest
-   LICITACAT_WEB_IMAGE=ghcr.io/rlstech/licitacat-web:latest
-   ```
+As imagens são sempre referenciadas por tag imutável do commit:
 
-4. Se os pacotes GHCR forem privados, crie/configure uma credencial de registry no Portainer para `ghcr.io` e associe-a ao stack. Use um GitHub Personal Access Token com escopo `read:packages` como senha. Se os pacotes forem públicos, isso não é necessário.
-5. Habilite a opção de sempre obter a imagem atual antes do deploy, se a versão do Portainer a oferecer.
-6. Copie o **Webhook URL** do stack e grave-o no secret `PORTAINER_WEBHOOK_URL` no GitHub.
+```text
+ghcr.io/rlstech/licitacat-api:sha-<commit>
+ghcr.io/rlstech/licitacat-web:sha-<commit>
+```
 
-O webhook é uma credencial de deploy: não o coloque em arquivos, commits, issues ou logs.
+A API key é uma credencial de deploy: não a coloque em arquivos, commits, issues ou logs.
 
 ## Desenvolvimento local usando a API e a autenticação da VPS
 

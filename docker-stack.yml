@@ -4,10 +4,7 @@ services:
 
   # ── Next.js Frontend ────────────────────────────��─────────────
   web:
-    # In Portainer, set LICITACAT_WEB_IMAGE to the GHCR image documented in
-    # docs/deploy-github-actions-portainer.md. The default preserves manual
-    # deployments that use a locally built image.
-    image: "${LICITACAT_WEB_IMAGE:-licitacat-web:latest}"
+    image: "ghcr.io/rlstech/licitacat-web:${WEB_IMAGE_TAG:-latest}"
     networks:
       - network_public
       - licitacat_network
@@ -36,10 +33,7 @@ services:
 
   # ── Fastify API ────────────────────────────────────────────────
   api:
-    # In Portainer, set LICITACAT_API_IMAGE to the GHCR image documented in
-    # docs/deploy-github-actions-portainer.md. The default preserves manual
-    # deployments that use a locally built image.
-    image: "${LICITACAT_API_IMAGE:-licitacat-api:latest}"
+    image: "ghcr.io/rlstech/licitacat-api:${API_IMAGE_TAG:-latest}"
     networks:
       - network_public
       - licitacat_network
@@ -101,7 +95,7 @@ services:
 
   # ── BullMQ Worker ──────────────────────────────────────────────
   worker:
-    image: "${LICITACAT_API_IMAGE:-licitacat-api:latest}"
+    image: "ghcr.io/rlstech/licitacat-api:${API_IMAGE_TAG:-latest}"
     command: ["./node_modules/.bin/tsx", "packages/queue/src/worker.ts"]
     networks:
       - licitacat_network
