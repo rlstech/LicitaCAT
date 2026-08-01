@@ -140,3 +140,38 @@ jobs:
             "$payload" >/dev/null
 
           echo "Deployed stack '$STACK_NAME' with API and web tag $IMAGE_TAG" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify Swarm services
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          request() {
+            curl --fail-with-body --silent --show-error \
+              --header "X-API-Key: $PORTAINER_API_KEY" "$1"
+          }
+
+          # Give Swarm a short window to create replacement tasks, then report
+          # only task state/error metadata (never service environment values).
+          sleep 15
+          services=$(request "$PORTAINER_URL/api/endpoints/$PORTAINER_ENDPOINT_ID/docker/services")
+          tasks=$(request "$PORTAINER_URL/api/endpoints/$PORTAINER_ENDPOINT_ID/docker/tasks")
+
+          for service_name in licitacat_api licitacat_web licitacat_worker; do
+            service_id=$(jq -r --arg name "$service_name" '.[] | select(.Spec.Name == $name) | .ID // empty' <<< "$services")
+            if [ -z "$service_id" ]; then
+              echo "Missing Swarm service: $service_name" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+
+            state=$(jq -c --arg id "$service_id" '[.[] | select(.ServiceID == $id) | {desired: .DesiredState, current: .Status.State, error: (.Status.Err // "")} ]' <<< "$tasks")
+            echo "### $service_name" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`json" >> "$GITHUB_STEP_SUMMARY"
+            echo "$state" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+
+            if jq -e 'any(.[]; .current == "failed" or .current == "rejected")' <<< "$state" >/dev/null; then
+              echo "Swarm reported a failed task for $service_name" >&2
+              exit 1
+            fi
+          done
