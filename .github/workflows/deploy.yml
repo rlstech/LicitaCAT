@@ -172,6 +172,21 @@ jobs:
             echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
 
             if jq -e 'any(.[]; .current == "failed" or .current == "rejected")' <<< "$state" >/dev/null; then
+              failed_container=$(jq -r --arg id "$service_id" '
+                [.[] | select(.ServiceID == $id and (.Status.State == "failed" or .Status.State == "rejected"))
+                 | .Status.ContainerStatus.ContainerID // empty] | first // empty
+              ' <<< "$tasks")
+              if [ -n "$failed_container" ]; then
+                logs=$(request "$PORTAINER_URL/api/endpoints/$PORTAINER_ENDPOINT_ID/docker/containers/$failed_container/logs?stdout=true&stderr=true&tail=50" || true)
+                safe_logs=$(printf '%s' "$logs" \
+                  | sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1***#g' \
+                  | grep -Ei 'database_url|error|cannot find|module|permission|connect|econn|authentication' \
+                  | tail -20 || true)
+                if [ -n "$safe_logs" ]; then
+                  echo "Startup error excerpt for $service_name:"
+                  printf '%s\n' "$safe_logs"
+                fi
+              fi
               echo "Swarm reported a failed task for $service_name" >&2
               exit 1
             fi
